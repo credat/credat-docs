@@ -1,0 +1,206 @@
+# Implement the Trust Handshake
+
+The handshake combines identity verification and delegation verification into a single protocol.
+This guide implements the full 3-message flow between an agent and a service.
+
+## Setup
+
+```typescript
+import {
+  createAgent,
+  generateKeyPair,
+  delegate,
+  createChallenge,
+  presentCredentials,
+  verifyPresentation,
+  hasScope,
+} from "credat";
+
+// --- Owner setup ---
+const ownerKeys = generateKeyPair("ES256");
+const ownerDid = "did:web:acme.com";
+
+// --- Agent setup ---
+const agent = await createAgent({
+  domain: "acme.com",
+  path: "agents/api-bot",
+  algorithm: "ES256",
+});
+
+// --- Issue delegation ---
+const delegation = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["api:read", "api:write"],
+});
+```
+
+## The handshake
+
+### Step 1: Service sends a challenge
+
+```typescript
+// --- Service side ---
+const challenge = createChallenge({ from: "did:web:service.com" });
+
+// Send `challenge` to the agent (over HTTP, WebSocket, etc.)
+// The challenge contains a random nonce that prevents replay attacks
+```
+
+### Step 2: Agent presents credentials
+
+```typescript
+// --- Agent side ---
+// Agent receives the challenge and responds with a presentation
+const presentation = await presentCredentials({
+  challenge,                    // The challenge from the service
+  delegation: delegation.raw,   // The delegation credential
+  agent,                        // Agent's full identity (keys + DID)
+});
+
+// Send `presentation` back to the service
+```
+
+### Step 3: Service verifies
+
+```typescript
+// --- Service side ---
+const result = await verifyPresentation(presentation, {
+  challenge,                              // The original challenge we sent
+  ownerPublicKey: ownerKeys.publicKey,    // The owner's public key
+  agentPublicKey: agent.keyPair.publicKey, // The agent's public key
+});
+
+if (result.valid) {
+  console.log("Verified agent:", result.agent);
+  console.log("Delegated by:", result.owner);
+  console.log("Scopes:", result.scopes);
+
+  // Check specific permissions
+  if (hasScope(result, "api:write")) {
+    // Allow write operations
+  }
+} else {
+  console.error("Verification failed:", result.errors);
+}
+```
+
+## Full example: HTTP API
+
+Here's a realistic example using an HTTP API:
+
+### Agent (client)
+
+```typescript
+async function callProtectedAPI(
+  agent: AgentIdentity,
+  delegation: DelegationCredential,
+  apiUrl: string,
+) {
+  // 1. Request a challenge
+  const challengeRes = await fetch(`${apiUrl}/challenge`, { method: "POST" });
+  const challenge: ChallengeMessage = await challengeRes.json();
+
+  // 2. Create presentation
+  const presentation = await presentCredentials({
+    challenge,
+    delegation: delegation.raw,
+    agent,
+  });
+
+  // 3. Send presentation with the actual API request
+  const response = await fetch(`${apiUrl}/data`, {
+    method: "GET",
+    headers: {
+      "X-Credat-Presentation": JSON.stringify(presentation),
+    },
+  });
+
+  return response.json();
+}
+```
+
+### Service (server)
+
+```typescript
+// Store active challenges (in-memory for simplicity; use Redis in production)
+const challenges = new Map<string, ChallengeMessage>();
+
+// Endpoint: Issue challenge
+app.post("/challenge", (req, res) => {
+  const challenge = createChallenge({ from: "did:web:service.com" });
+  challenges.set(challenge.nonce, challenge);
+
+  // Expire after 5 minutes
+  setTimeout(() => challenges.delete(challenge.nonce), 5 * 60 * 1000);
+
+  res.json(challenge);
+});
+
+// Middleware: Verify presentation
+async function verifyAgent(req, res, next) {
+  const header = req.headers["x-credat-presentation"];
+  if (!header) return res.status(401).json({ error: "No credentials" });
+
+  const presentation: PresentationMessage = JSON.parse(header);
+
+  // Look up the original challenge
+  const challenge = challenges.get(presentation.nonce);
+  if (!challenge) return res.status(401).json({ error: "Invalid or expired challenge" });
+
+  // Delete challenge (one-time use)
+  challenges.delete(presentation.nonce);
+
+  // Resolve the owner's public key (in production, fetch from DID Document)
+  const ownerPublicKey = await getOwnerPublicKey(presentation);
+
+  // Resolve the agent's public key
+  const agentPublicKey = await getAgentPublicKey(presentation.from);
+
+  const result = await verifyPresentation(presentation, {
+    challenge,
+    ownerPublicKey,
+    agentPublicKey,
+  });
+
+  if (!result.valid) {
+    return res.status(401).json({ error: "Verification failed", details: result.errors });
+  }
+
+  // Attach verified info to request
+  req.agent = result;
+  next();
+}
+
+// Protected endpoint
+app.get("/data", verifyAgent, (req, res) => {
+  if (!hasScope(req.agent, "api:read")) {
+    return res.status(403).json({ error: "Insufficient scopes" });
+  }
+
+  res.json({ data: "secret stuff" });
+});
+```
+
+## Specifying the algorithm
+
+If the agent uses EdDSA instead of ES256, pass the algorithm explicitly:
+
+```typescript
+const result = await verifyPresentation(presentation, {
+  challenge,
+  ownerPublicKey,
+  agentPublicKey,
+  agentAlgorithm: "EdDSA",
+});
+```
+
+If not specified, the algorithm is inferred from the public key length:
+- 33 bytes = ES256 (P-256 compressed)
+- 32 bytes = EdDSA (Ed25519)
+
+## Next steps
+
+- [Agent-to-agent trust](/docs/guides/agent-to-agent) --- Agents authenticating to each other
+- [Handshake API reference](/docs/api/handshake) --- Full function signatures

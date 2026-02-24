@@ -1,0 +1,197 @@
+# DID API
+
+Low-level DID (Decentralized Identifier) operations. Used internally by `createAgent` and the handshake,
+but available for advanced use cases.
+
+---
+
+## `resolveDID`
+
+Universal DID resolver. Detects the method and delegates to the correct resolver.
+
+```typescript
+function resolveDID(did: string): Promise<DIDResolutionResult>
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `did` | `string` | Any supported DID (e.g. `did:web:acme.com`, `did:key:z6Mkh...`) |
+
+### Returns
+
+#### `DIDResolutionResult`
+
+| Field | Type | Description |
+|---|---|---|
+| `didDocument` | `DIDDocument \| null` | The resolved DID Document, or `null` on failure |
+| `didResolutionMetadata` | `{ error?: string }` | Metadata about the resolution (contains `error` on failure) |
+| `didDocumentMetadata` | `Record<string, unknown>` | Additional metadata |
+
+### Example
+
+```typescript
+import { resolveDID } from "credat";
+
+// Resolve did:web (makes HTTP request)
+const webResult = await resolveDID("did:web:acme.com");
+if (webResult.didDocument) {
+  console.log(webResult.didDocument.verificationMethod);
+}
+
+// Resolve did:key (no network request)
+const keyResult = await resolveDID("did:key:z6MkhaXg...");
+if (keyResult.didDocument) {
+  console.log(keyResult.didDocument.id);
+}
+```
+
+### Errors
+
+| Error | When |
+|---|---|
+| `DIDError` with `DID_RESOLUTION_FAILED` | Invalid DID format (doesn't start with `did:`) |
+| `DIDError` with `DID_METHOD_UNSUPPORTED` | DID method not supported (only `key` and `web` are supported) |
+
+### Supported methods
+
+| Method | Resolution | Network |
+|---|---|---|
+| `did:web` | Fetches `https://{domain}/.well-known/did.json` | Yes |
+| `did:key` | Extracts key from the DID string | No |
+
+---
+
+## `did:web` functions
+
+### `createDidWeb`
+
+Creates a `did:web` identifier from a domain and optional path.
+
+```typescript
+function createDidWeb(domain: string, path?: string): string
+```
+
+### Examples
+
+```typescript
+import { createDidWeb } from "credat";
+
+createDidWeb("acme.com");
+// "did:web:acme.com"
+
+createDidWeb("acme.com", "agents/bot-1");
+// "did:web:acme.com:agents:bot-1"
+```
+
+### `didWebToUrl`
+
+Converts a `did:web` to its HTTP resolution URL.
+
+```typescript
+function didWebToUrl(did: string): string
+```
+
+### Examples
+
+```typescript
+import { didWebToUrl } from "credat";
+
+didWebToUrl("did:web:acme.com");
+// "https://acme.com/.well-known/did.json"
+
+didWebToUrl("did:web:acme.com:agents:bot-1");
+// "https://acme.com/agents/bot-1/did.json"
+```
+
+### `resolveDidWeb`
+
+Resolves a `did:web` by fetching its DID Document over HTTPS.
+
+```typescript
+function resolveDidWeb(did: string): Promise<DIDResolutionResult>
+```
+
+Returns `{ didDocument: null, didResolutionMetadata: { error: "notFound" } }` on HTTP errors or network failures.
+
+---
+
+## `did:key` functions
+
+### `createDidKey`
+
+Creates a `did:key` identifier from a raw public key.
+
+```typescript
+function createDidKey(publicKey: Uint8Array, algorithm: Algorithm): string
+```
+
+### Example
+
+```typescript
+import { createDidKey, generateKeyPair } from "credat";
+
+const keys = generateKeyPair("EdDSA");
+const did = createDidKey(keys.publicKey, "EdDSA");
+// "did:key:z6Mkh..."
+```
+
+### `resolveDidKey`
+
+Resolves a `did:key` by extracting the public key from the identifier. No network request.
+
+```typescript
+function resolveDidKey(did: string): DIDResolutionResult
+```
+
+### Example
+
+```typescript
+import { resolveDidKey } from "credat";
+
+const result = resolveDidKey("did:key:z6Mkh...");
+if (result.didDocument) {
+  const jwk = result.didDocument.verificationMethod?.[0]?.publicKeyJwk;
+  console.log(jwk);
+  // { kty: "OKP", crv: "Ed25519", x: "..." }
+}
+```
+
+---
+
+## Types
+
+### `DIDDocument`
+
+```typescript
+interface DIDDocument {
+  id: string;
+  verificationMethod?: VerificationMethod[];
+  authentication?: string[];
+  assertionMethod?: string[];
+  service?: ServiceEndpoint[];
+}
+```
+
+### `VerificationMethod`
+
+```typescript
+interface VerificationMethod {
+  id: string;
+  type: string;
+  controller: string;
+  publicKeyJwk?: JsonWebKey;
+  publicKeyMultibase?: string;
+}
+```
+
+### `ServiceEndpoint`
+
+```typescript
+interface ServiceEndpoint {
+  id: string;
+  type: string;
+  serviceEndpoint: string;
+}
+```

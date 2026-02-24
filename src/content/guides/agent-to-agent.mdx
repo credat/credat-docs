@@ -1,0 +1,219 @@
+# Agent-to-Agent Trust
+
+When two AI agents need to interact directly --- one agent calling another agent's API, for example --- both sides need to verify each other's identity and permissions.
+
+This guide shows how to implement mutual trust between agents using Credat.
+
+## The scenario
+
+**Agent A** (a shopping bot) needs to call **Agent B** (a payment service) to process a purchase.
+Both agents need to verify the other is legitimate before proceeding.
+
+## Setup
+
+```typescript
+import {
+  createAgent,
+  generateKeyPair,
+  delegate,
+  createChallenge,
+  presentCredentials,
+  verifyPresentation,
+  hasScope,
+} from "credat";
+
+// --- Owner A setup ---
+const ownerAKeys = generateKeyPair("ES256");
+
+const agentA = await createAgent({
+  domain: "shop.acme.com",
+  path: "agents/shopper",
+  algorithm: "ES256",
+});
+
+const delegationA = await delegate({
+  agent: agentA.did,
+  owner: "did:web:shop.acme.com",
+  ownerKeyPair: ownerAKeys,
+  scopes: ["purchase:initiate", "payment:request"],
+  constraints: { maxTransactionValue: 500 },
+});
+
+// --- Owner B setup ---
+const ownerBKeys = generateKeyPair("ES256");
+
+const agentB = await createAgent({
+  domain: "pay.example.com",
+  path: "agents/processor",
+  algorithm: "ES256",
+});
+
+const delegationB = await delegate({
+  agent: agentB.did,
+  owner: "did:web:pay.example.com",
+  ownerKeyPair: ownerBKeys,
+  scopes: ["payment:process", "receipt:issue"],
+});
+```
+
+## Mutual handshake
+
+### Phase 1: Agent B challenges Agent A
+
+```typescript
+// Agent B (service) creates a challenge
+const challengeFromB = createChallenge({
+  from: agentB.did,
+});
+
+// Agent A responds with its credentials
+const presentationA = await presentCredentials({
+  challenge: challengeFromB,
+  delegation: delegationA.raw,
+  agent: agentA,
+});
+
+// Agent B verifies Agent A
+const resultA = await verifyPresentation(presentationA, {
+  challenge: challengeFromB,
+  ownerPublicKey: ownerAKeys.publicKey,
+  agentPublicKey: agentA.keyPair.publicKey,
+});
+
+if (!resultA.valid) {
+  throw new Error("Agent A verification failed");
+}
+
+if (!hasScope(resultA, "payment:request")) {
+  throw new Error("Agent A cannot request payments");
+}
+```
+
+### Phase 2: Agent A challenges Agent B
+
+```typescript
+// Agent A creates a counter-challenge
+const challengeFromA = createChallenge({
+  from: agentA.did,
+});
+
+// Agent B responds with its credentials
+const presentationB = await presentCredentials({
+  challenge: challengeFromA,
+  delegation: delegationB.raw,
+  agent: agentB,
+});
+
+// Agent A verifies Agent B
+const resultB = await verifyPresentation(presentationB, {
+  challenge: challengeFromA,
+  ownerPublicKey: ownerBKeys.publicKey,
+  agentPublicKey: agentB.keyPair.publicKey,
+});
+
+if (!resultB.valid) {
+  throw new Error("Agent B verification failed");
+}
+
+if (!hasScope(resultB, "payment:process")) {
+  throw new Error("Agent B cannot process payments");
+}
+```
+
+### Phase 3: Proceed with the operation
+
+```typescript
+// Both agents are now verified
+console.log("Agent A verified:", resultA.agent, "scopes:", resultA.scopes);
+console.log("Agent B verified:", resultB.agent, "scopes:", resultB.scopes);
+
+// Check constraints
+if (resultA.constraints?.maxTransactionValue &&
+    purchaseAmount > resultA.constraints.maxTransactionValue) {
+  throw new Error("Purchase exceeds agent's transaction limit");
+}
+
+// Safe to proceed with the payment
+```
+
+## A reusable pattern
+
+```typescript
+async function mutualHandshake(
+  localAgent: AgentIdentity,
+  localDelegation: string,
+  remotePublicKey: Uint8Array,
+  remoteOwnerPublicKey: Uint8Array,
+  requiredScopes: string[],
+) {
+  // 1. Challenge the remote agent
+  const challenge = createChallenge({ from: localAgent.did });
+
+  // 2. Send challenge, receive presentation (transport-dependent)
+  const remotePresentation = await sendAndReceive(challenge);
+
+  // 3. Verify remote agent
+  const result = await verifyPresentation(remotePresentation, {
+    challenge,
+    ownerPublicKey: remoteOwnerPublicKey,
+    agentPublicKey: remotePublicKey,
+  });
+
+  if (!result.valid) {
+    throw new Error(`Remote agent verification failed: ${result.errors.map(e => e.message).join(", ")}`);
+  }
+
+  // 4. Check required scopes
+  for (const scope of requiredScopes) {
+    if (!hasScope(result, scope)) {
+      throw new Error(`Remote agent missing required scope: ${scope}`);
+    }
+  }
+
+  return result;
+}
+```
+
+## Key considerations
+
+### Trust anchors
+
+Both agents need access to each other's owner public keys. In production, you'd typically:
+
+1. **Resolve the owner's DID** to get the public key from the DID Document
+2. **Maintain a trusted issuers list** of known owner DIDs
+3. **Use a trust registry** for larger ecosystems
+
+### Ephemeral sessions
+
+After mutual verification, you might establish a session token to avoid repeating the handshake on every request:
+
+```typescript
+// After successful mutual handshake
+const sessionToken = crypto.randomUUID();
+const sessionExpiry = Date.now() + 30 * 60 * 1000; // 30 minutes
+
+sessions.set(sessionToken, {
+  agentDid: result.agent,
+  scopes: result.scopes,
+  constraints: result.constraints,
+  expiresAt: sessionExpiry,
+});
+
+// Subsequent requests use the session token instead of repeating the handshake
+```
+
+### Cross-domain trust
+
+When agents belong to different organizations, the key question is: "Do I trust the other agent's owner?"
+
+Credat doesn't prescribe how you answer this. Options include:
+- Hardcoded trusted owner DIDs
+- A shared trust registry
+- Out-of-band verification (the owners agree offline)
+- Certificate chains (future feature)
+
+## Next steps
+
+- [Scopes reference](/docs/api/scopes) --- Full scope helper API
+- [Error codes](/docs/api/errors) --- All possible error codes and what they mean

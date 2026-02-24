@@ -1,0 +1,132 @@
+# Agent API
+
+## `createAgent`
+
+Creates a new agent identity with a DID, key pair, and DID Document.
+
+```typescript
+function createAgent(config: AgentConfig): Promise<AgentIdentity>
+```
+
+### Parameters
+
+#### `AgentConfig`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `domain` | `string` | Yes | --- | Domain to host the DID Document |
+| `path` | `string` | No | --- | Sub-path for multiple agents on the same domain |
+| `algorithm` | `"ES256" \| "EdDSA" \| "ES256K"` | No | `"ES256"` | Signing algorithm |
+| `storage` | `StorageAdapter` | No | --- | Storage adapter for persisting the identity |
+
+### Returns
+
+#### `AgentIdentity`
+
+| Field | Type | Description |
+|---|---|---|
+| `did` | `string` | The DID, e.g. `did:web:acme.com` |
+| `didDocument` | `DIDDocument` | The DID Document containing the public key |
+| `keyPair` | `{ algorithm: string, publicKey: Uint8Array, privateKey: Uint8Array }` | The cryptographic key pair |
+| `algorithm` | `string` | The signing algorithm used |
+| `domain` | `string` | The domain |
+| `path` | `string \| undefined` | The sub-path, if any |
+
+### Example
+
+```typescript
+import { createAgent, MemoryStorage } from "credat";
+
+const storage = new MemoryStorage();
+
+const agent = await createAgent({
+  domain: "acme.com",
+  path: "agents/bot-1",
+  algorithm: "EdDSA",
+  storage,
+});
+
+// agent.did === "did:web:acme.com:agents:bot-1"
+```
+
+### Errors
+
+| Code | When |
+|---|---|
+| `AGENT_CREATION_FAILED` | Domain is missing or empty |
+
+---
+
+## `loadAgent`
+
+Loads a previously created agent identity from storage.
+
+```typescript
+function loadAgent(options: LoadAgentOptions): Promise<AgentIdentity>
+```
+
+### Parameters
+
+#### `LoadAgentOptions`
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `did` | `string` | Yes | The DID of the agent to load |
+| `storage` | `StorageAdapter` | Yes | Storage adapter where the agent was saved |
+
+### Returns
+
+`AgentIdentity` --- same shape as `createAgent`.
+
+### Example
+
+```typescript
+import { loadAgent, MemoryStorage } from "credat";
+
+const storage = new MemoryStorage();
+
+const agent = await loadAgent({
+  did: "did:web:acme.com",
+  storage,
+});
+```
+
+### Errors
+
+| Code | When |
+|---|---|
+| `AGENT_NOT_FOUND` | No agent found with this DID in storage |
+
+---
+
+## `MemoryStorage`
+
+In-memory implementation of `StorageAdapter`. Data is lost when the process exits.
+
+```typescript
+class MemoryStorage implements StorageAdapter
+```
+
+### Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `get` | `get<T>(collection: string, key: string): Promise<T \| null>` | Get a value |
+| `set` | `set<T>(collection: string, key: string, value: T): Promise<void>` | Set a value |
+| `delete` | `delete(collection: string, key: string): Promise<boolean>` | Delete a value |
+| `list` | `list<T>(collection: string): Promise<Array<{ key: string; value: T }>>` | List all values in a collection |
+| `clear` | `clear(collection?: string): Promise<void>` | Clear a collection or all data |
+
+### `StorageAdapter` interface
+
+Implement this interface to use any backing store:
+
+```typescript
+interface StorageAdapter {
+  get<T>(collection: string, key: string): Promise<T | null>;
+  set<T>(collection: string, key: string, value: T): Promise<void>;
+  delete(collection: string, key: string): Promise<boolean>;
+  list<T>(collection: string): Promise<Array<{ key: string; value: T }>>;
+  clear(collection?: string): Promise<void>;
+}
+```

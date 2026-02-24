@@ -1,0 +1,118 @@
+# Scopes API
+
+Scope helpers work with any object that has a `scopes: string[]` property.
+This includes `DelegationResult` from both `verifyDelegation` and `verifyPresentation`.
+
+---
+
+## `hasScope`
+
+Checks if a result contains a specific scope.
+
+```typescript
+function hasScope(result: { scopes: string[] }, scope: string): boolean
+```
+
+### Example
+
+```typescript
+import { hasScope } from "credat";
+
+if (hasScope(result, "email:read")) {
+  // Agent has email:read permission
+}
+```
+
+---
+
+## `hasAnyScope`
+
+Checks if a result contains **at least one** of the given scopes.
+
+```typescript
+function hasAnyScope(result: { scopes: string[] }, scopes: string[]): boolean
+```
+
+### Example
+
+```typescript
+import { hasAnyScope } from "credat";
+
+if (hasAnyScope(result, ["files:read", "files:write"])) {
+  // Agent has at least one file permission
+}
+```
+
+---
+
+## `hasAllScopes`
+
+Checks if a result contains **all** of the given scopes.
+
+```typescript
+function hasAllScopes(result: { scopes: string[] }, scopes: string[]): boolean
+```
+
+### Example
+
+```typescript
+import { hasAllScopes } from "credat";
+
+if (hasAllScopes(result, ["email:read", "email:send"])) {
+  // Agent has complete email access
+}
+```
+
+---
+
+## `getAllScopes`
+
+Returns a copy of the scopes array.
+
+```typescript
+function getAllScopes(result: { scopes: string[] }): string[]
+```
+
+### Example
+
+```typescript
+import { getAllScopes } from "credat";
+
+const scopes = getAllScopes(result);
+// ["email:read", "email:send", "calendar:write"]
+```
+
+---
+
+## Usage pattern
+
+A typical scope check in an API handler:
+
+```typescript
+import { verifyPresentation, hasScope, hasAllScopes } from "credat";
+
+async function handleRequest(presentation, challenge) {
+  const result = await verifyPresentation(presentation, {
+    challenge,
+    ownerPublicKey,
+    agentPublicKey,
+  });
+
+  if (!result.valid) {
+    return { status: 401, error: "Unauthorized" };
+  }
+
+  // Route-level scope check
+  if (!hasScope(result, "api:read")) {
+    return { status: 403, error: "Missing api:read scope" };
+  }
+
+  // Operation-level scope check
+  if (operation === "delete" && !hasScope(result, "api:delete")) {
+    return { status: 403, error: "Missing api:delete scope" };
+  }
+
+  // Proceed
+  return { status: 200, data: "..." };
+}
+```

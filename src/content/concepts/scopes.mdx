@@ -1,0 +1,140 @@
+# Scopes & Constraints
+
+## Scopes
+
+Scopes are **strings that define what an agent can do**. They're included in delegation credentials and verified by services.
+
+```typescript
+const delegation = await delegate({
+  // ...
+  scopes: ["email:read", "email:send", "calendar:write"],
+});
+```
+
+### Scope conventions
+
+Credat doesn't enforce a naming convention --- scopes are just strings. But we recommend the `resource:action` pattern:
+
+```
+email:read          // Read emails
+email:send          // Send emails
+files:read          // Read files
+files:write         // Write files
+files:delete        // Delete files
+api:billing:read    // Read billing data
+api:billing:write   // Write billing data
+```
+
+### Checking scopes
+
+After verifying a delegation or presentation, use the scope helpers:
+
+```typescript
+import { hasScope, hasAnyScope, hasAllScopes, getAllScopes } from "credat";
+
+const result = await verifyDelegation(delegation.raw, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+
+// Check for a single scope
+if (hasScope(result, "email:read")) {
+  // Agent can read emails
+}
+
+// Check if the agent has ANY of these scopes
+if (hasAnyScope(result, ["files:read", "files:write"])) {
+  // Agent has at least one file permission
+}
+
+// Check if the agent has ALL of these scopes
+if (hasAllScopes(result, ["email:read", "email:send"])) {
+  // Agent has full email access
+}
+
+// Get all scopes as an array
+const scopes = getAllScopes(result);
+// ["email:read", "email:send", "calendar:write"]
+```
+
+### Scope enforcement
+
+Credat **checks** scopes but does not **enforce** them. Enforcement is your application's job.
+
+Here's a typical pattern:
+
+```typescript
+// In your API handler
+const result = await verifyPresentation(presentation, verifyOptions);
+
+if (!result.valid) {
+  return { status: 401, message: "Invalid credentials" };
+}
+
+if (!hasScope(result, "files:write")) {
+  return { status: 403, message: "Insufficient permissions" };
+}
+
+// Proceed with the file write operation
+```
+
+## Constraints
+
+Constraints add additional limits beyond scopes. While scopes say *what* the agent can do, constraints say *how much*, *where*, and *when*.
+
+### Built-in constraint fields
+
+| Field | Type | Description |
+|---|---|---|
+| `maxTransactionValue` | `number` | Maximum value per operation |
+| `validUntil` | `string` | ISO 8601 expiration timestamp |
+| `allowedDomains` | `string[]` | Domains the agent is permitted to interact with |
+| `rateLimit` | `number` | Maximum number of operations in a time window |
+
+### Custom constraints
+
+The `constraints` object is semi-structured: typed common fields plus an open escape hatch for anything else.
+
+```typescript
+const delegation = await delegate({
+  // ...
+  constraints: {
+    // Built-in fields
+    maxTransactionValue: 1000,
+    allowedDomains: ["api.stripe.com", "api.github.com"],
+    rateLimit: 100,
+
+    // Custom fields (any key-value pair)
+    environment: "production",
+    team: "backend",
+    region: "eu-west-1",
+  },
+});
+```
+
+### Checking constraints
+
+After verification, constraints are available on the result:
+
+```typescript
+const result = await verifyDelegation(delegation.raw, { ownerPublicKey });
+
+if (result.valid && result.constraints) {
+  if (result.constraints.maxTransactionValue &&
+      transactionAmount > result.constraints.maxTransactionValue) {
+    return { status: 403, message: "Transaction exceeds limit" };
+  }
+
+  if (result.constraints.allowedDomains &&
+      !result.constraints.allowedDomains.includes(targetDomain)) {
+    return { status: 403, message: "Domain not allowed" };
+  }
+}
+```
+
+### Constraint enforcement
+
+Like scopes, Credat includes constraints in the credential and returns them after verification, but does not enforce them.
+Your application reads the constraints and decides how to act on them.
+
+This is by design: enforcement logic varies wildly between applications. A payment service checks `maxTransactionValue`;
+a CDN checks `allowedDomains`; an API gateway checks `rateLimit`. Credat provides the trusted data; you write the rules.

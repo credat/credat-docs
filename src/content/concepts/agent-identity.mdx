@@ -1,0 +1,130 @@
+# Agent Identity
+
+## The problem
+
+When an AI agent calls an API, sends an email, or makes a purchase on your behalf, the receiving service has no idea who it's talking to.
+Is this agent really from Acme Corp? Was it actually authorized? Is it the same agent from 5 minutes ago?
+
+Without identity, agents are anonymous HTTP clients. Services have no way to trust them.
+
+## How Credat solves it
+
+Every agent gets a **DID** (Decentralized Identifier) --- a globally unique identifier hosted on your domain.
+
+```
+did:web:acme.com           // Company's main agent
+did:web:acme.com:agents:a1 // Specific agent instance
+```
+
+A DID resolves to a **DID Document** containing the agent's public key. Anyone can look it up and verify signatures made by this agent.
+
+```typescript
+const agent = await createAgent({
+  domain: "acme.com",
+  path: "agents/a1",
+  algorithm: "ES256",
+});
+
+// agent.did === "did:web:acme.com:agents:a1"
+// agent.didDocument contains the public key
+// agent.keyPair contains public + private keys
+```
+
+## What's in an agent identity?
+
+| Field | What it is |
+|---|---|
+| `did` | The unique identifier, e.g. `did:web:acme.com` |
+| `didDocument` | Public key and metadata, hosted at `https://acme.com/.well-known/did.json` |
+| `keyPair` | The cryptographic key pair (public + private) |
+| `algorithm` | The signing algorithm: `ES256`, `EdDSA`, or `ES256K` |
+| `domain` | The domain this identity lives on |
+
+## DID methods
+
+Credat supports three DID methods. Each is suited for different scenarios.
+
+### `did:web` --- Domain-hosted identity
+
+The agent's identity is tied to a domain you control. The DID Document is served at a well-known URL.
+
+```
+did:web:acme.com          -> https://acme.com/.well-known/did.json
+did:web:acme.com:agents:a1 -> https://acme.com/agents/a1/did.json
+```
+
+**When to use:** Production agents that need to be resolvable by external services. This is the recommended method for most use cases.
+
+### `did:key` --- Self-contained identity
+
+The public key is encoded directly in the DID. No hosting required.
+
+```
+did:key:z6Mkh... (Ed25519)
+did:key:zDn...   (P-256)
+```
+
+**When to use:** Testing, ephemeral agents, or offline scenarios where you don't need domain-hosted resolution.
+
+### `did:jwk` --- JWK-encoded identity
+
+The full JWK (JSON Web Key) is encoded in the DID.
+
+**When to use:** Interoperability with systems that work with JWKs natively.
+
+## How resolution works
+
+When a service receives a DID, it can resolve it to get the public key:
+
+```typescript
+import { resolveDID } from "credat";
+
+const result = await resolveDID("did:web:acme.com");
+
+if (result.didDocument) {
+  const publicKey = result.didDocument.verificationMethod?.[0]?.publicKeyJwk;
+  // Now the service can verify signatures from this agent
+}
+```
+
+For `did:web`, this fetches the DID Document from the domain. For `did:key`, it extracts the key from the DID string itself (no network request).
+
+## Hosting the DID Document
+
+Credat creates DID Documents but does not host them. You need to serve the JSON file at the correct URL.
+
+For `did:web:acme.com`, serve the `didDocument` at:
+```
+https://acme.com/.well-known/did.json
+```
+
+For `did:web:acme.com:agents:a1`, serve it at:
+```
+https://acme.com/agents/a1/did.json
+```
+
+The DID Document is a plain JSON file. You can serve it from any static host, CDN, or API endpoint.
+
+## Storage
+
+Agent identities can be persisted using a storage adapter:
+
+```typescript
+import { createAgent, loadAgent, MemoryStorage } from "credat";
+
+const storage = new MemoryStorage();
+
+// Create and persist
+const agent = await createAgent({
+  domain: "acme.com",
+  storage,
+});
+
+// Load later
+const same = await loadAgent({
+  did: "did:web:acme.com",
+  storage,
+});
+```
+
+You can implement your own `StorageAdapter` for any backing store (database, file system, KMS).

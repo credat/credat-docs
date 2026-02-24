@@ -1,0 +1,153 @@
+# Trust Handshake
+
+## The problem
+
+An agent has an identity and a delegation. But how does it actually *prove* these to a service?
+
+Just sending the delegation isn't enough --- anyone who intercepts it could replay it.
+The service needs to know: "Is this agent the same entity that was delegated these permissions, *right now*?"
+
+## The 3-message protocol
+
+Credat uses a challenge-response handshake inspired by mutual authentication protocols.
+It proves identity and permissions in exactly three messages:
+
+```
+Service                         Agent
+   |                              |
+   |  1. Challenge (nonce)        |
+   |----------------------------->|
+   |                              |
+   |  2. Presentation             |
+   |     (delegation + proof)     |
+   |<-----------------------------|
+   |                              |
+   |  3. Ack (verified/denied)    |
+   |----------------------------->|
+```
+
+### Message 1: Challenge
+
+The service creates a challenge containing a random nonce (a one-time-use random value):
+
+```typescript
+import { createChallenge } from "credat";
+
+const challenge = createChallenge({ from: "did:web:service.com" });
+// {
+//   type: "credat:challenge",
+//   nonce: "dG9rZW4tMTIz...",
+//   from: "did:web:service.com",
+//   timestamp: "2026-02-24T10:00:00.000Z"
+// }
+```
+
+The nonce prevents replay attacks. Each handshake uses a fresh nonce.
+
+### Message 2: Presentation
+
+The agent signs the nonce with its private key and presents it alongside the delegation credential:
+
+```typescript
+import { presentCredentials } from "credat";
+
+const presentation = await presentCredentials({
+  challenge,
+  delegation: delegation.raw,
+  agent: agentIdentity,
+});
+// {
+//   type: "credat:presentation",
+//   delegation: "eyJhbGci...",   // The signed delegation VC
+//   nonce: "dG9rZW4tMTIz...",   // Same nonce from challenge
+//   proof: "MEUCIQD...",        // Agent's signature over the nonce
+//   from: "did:web:acme.com"
+// }
+```
+
+### Message 3: Verification
+
+The service verifies everything:
+
+```typescript
+import { verifyPresentation } from "credat";
+
+const result = await verifyPresentation(presentation, {
+  challenge,                           // The original challenge
+  ownerPublicKey: ownerKeys.publicKey, // Owner who issued the delegation
+  agentPublicKey: agent.keyPair.publicKey,
+});
+
+if (result.valid) {
+  // Agent is who it claims to be
+  // Delegation is valid and signed by the owner
+  // Scopes tell you what it's allowed to do
+  console.log(result.scopes); // ["email:read", "calendar:write"]
+}
+```
+
+## What gets verified
+
+The `verifyPresentation` function performs three checks in sequence:
+
+| Step | What it checks | Failure means |
+|---|---|---|
+| **1. Nonce match** | Presentation nonce matches challenge nonce | Replay attack or wrong challenge |
+| **2. Nonce proof** | Agent's signature over the nonce is valid | Agent doesn't hold the private key |
+| **3. Delegation** | Delegation VC signature, expiration, revocation | Invalid or expired delegation |
+
+If any step fails, the result includes specific error codes explaining what went wrong.
+
+## Transport agnostic
+
+Credat defines the *messages*, not the *transport*. You can send these over:
+- HTTP request/response
+- WebSocket
+- Message queues (RabbitMQ, Kafka)
+- gRPC
+- Even email
+
+The handshake is just three JSON objects. Send them however works for your architecture.
+
+## Mutual authentication
+
+The handshake can be made mutual. The ack message optionally includes a `counterChallenge` for the agent to verify the service's identity:
+
+```typescript
+interface AckMessage {
+  type: "credat:ack";
+  verified: boolean;
+  scopes?: string[];
+  counterChallenge?: ChallengeMessage;  // Service proves its identity too
+  delegation?: string;
+  proof?: string;
+  from?: string;
+}
+```
+
+This enables scenarios where the agent also needs to verify that the service is legitimate before sharing sensitive data.
+
+## Error handling
+
+```typescript
+const result = await verifyPresentation(presentation, options);
+
+if (!result.valid) {
+  for (const error of result.errors) {
+    switch (error.code) {
+      case "HANDSHAKE_INVALID_NONCE":
+        // Nonce mismatch - possible replay attack
+        break;
+      case "HANDSHAKE_VERIFICATION_FAILED":
+        // Agent's signature is invalid
+        break;
+      case "DELEGATION_SIGNATURE_INVALID":
+        // Delegation wasn't signed by the claimed owner
+        break;
+      case "DELEGATION_EXPIRED":
+        // Delegation has expired
+        break;
+    }
+  }
+}
+```

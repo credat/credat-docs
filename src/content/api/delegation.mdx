@@ -1,0 +1,146 @@
+# Delegation API
+
+## `delegate`
+
+Issues a delegation credential from an owner to an agent, granting specific scoped permissions.
+
+```typescript
+function delegate(options: DelegateOptions): Promise<DelegationCredential>
+```
+
+### Parameters
+
+#### `DelegateOptions`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `agent` | `string` | Yes | --- | DID of the agent receiving the delegation |
+| `owner` | `string` | Yes | --- | DID of the owner granting it |
+| `ownerKeyPair` | `{ algorithm: string, publicKey: Uint8Array, privateKey: Uint8Array }` | Yes | --- | Owner's signing key pair |
+| `scopes` | `string[]` | Yes | --- | Permissions to grant (min 1) |
+| `constraints` | `DelegationConstraints` | No | --- | Additional limits |
+| `validFrom` | `string` | No | --- | ISO 8601 start time |
+| `validUntil` | `string` | No | --- | ISO 8601 expiration time |
+| `statusListUrl` | `string` | No | --- | URL of the status list for revocation |
+| `statusListIndex` | `number` | No | --- | Index in the status list |
+
+#### `DelegationConstraints`
+
+| Field | Type | Description |
+|---|---|---|
+| `maxTransactionValue` | `number` | Maximum value per operation |
+| `validUntil` | `string` | ISO 8601 expiration |
+| `allowedDomains` | `string[]` | Permitted domains |
+| `rateLimit` | `number` | Max operations per time window |
+| `[key: string]` | `unknown` | Any custom constraint |
+
+### Returns
+
+#### `DelegationCredential`
+
+| Field | Type | Description |
+|---|---|---|
+| `raw` | `string` | The signed SD-JWT VC token (send this to services) |
+| `claims` | `DelegationClaims` | The decoded claims for local use |
+
+#### `DelegationClaims`
+
+| Field | Type | Description |
+|---|---|---|
+| `agent` | `string` | Agent DID |
+| `owner` | `string` | Owner DID |
+| `scopes` | `string[]` | Granted scopes |
+| `constraints` | `DelegationConstraints \| undefined` | Constraints, if set |
+| `validFrom` | `string \| undefined` | Start time |
+| `validUntil` | `string \| undefined` | Expiration time |
+
+### Example
+
+```typescript
+import { delegate, generateKeyPair } from "credat";
+
+const ownerKeys = generateKeyPair("ES256");
+
+const delegation = await delegate({
+  agent: "did:web:acme.com:agents:bot",
+  owner: "did:web:acme.com",
+  ownerKeyPair: ownerKeys,
+  scopes: ["files:read", "files:write"],
+  constraints: {
+    allowedDomains: ["storage.acme.com"],
+  },
+  validUntil: "2026-06-01T00:00:00Z",
+});
+```
+
+### Errors
+
+| Code | When |
+|---|---|
+| `DELEGATION_SCOPE_INVALID` | Empty scopes array |
+
+---
+
+## `verifyDelegation`
+
+Verifies a delegation credential's signature and expiration.
+
+```typescript
+function verifyDelegation(
+  token: string,
+  options: VerifyDelegationOptions,
+): Promise<DelegationResult>
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `token` | `string` | Yes | The raw SD-JWT VC token from `delegation.raw` |
+
+#### `VerifyDelegationOptions`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ownerPublicKey` | `Uint8Array` | Yes | --- | The owner's public key |
+| `algorithm` | `string` | No | --- | Signing algorithm (inferred if not set) |
+| `checkRevocation` | `boolean` | No | `false` | Whether to check revocation status |
+
+### Returns
+
+#### `DelegationResult`
+
+| Field | Type | Description |
+|---|---|---|
+| `valid` | `boolean` | Whether the delegation is valid |
+| `agent` | `string` | Agent DID (empty string if verification failed early) |
+| `owner` | `string` | Owner DID |
+| `scopes` | `string[]` | Granted scopes |
+| `constraints` | `DelegationConstraints \| undefined` | Constraints |
+| `validFrom` | `string \| undefined` | Start time |
+| `validUntil` | `string \| undefined` | Expiration time |
+| `errors` | `VerificationError[]` | Errors (empty if valid) |
+
+### Example
+
+```typescript
+import { verifyDelegation } from "credat";
+
+const result = await verifyDelegation(delegation.raw, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+
+if (result.valid) {
+  console.log(result.scopes);
+} else {
+  console.error(result.errors);
+}
+```
+
+### Errors in result
+
+| Code | Meaning |
+|---|---|
+| `DELEGATION_SIGNATURE_INVALID` | Token was not signed by the given public key |
+| `DELEGATION_EXPIRED` | Delegation has expired |
+| `DELEGATION_REVOKED` | Delegation was revoked via status list |

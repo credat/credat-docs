@@ -1,0 +1,171 @@
+# Errors
+
+All Credat errors extend the `CredatError` base class and include a machine-readable `code` and a human-readable `message`.
+
+## Error classes
+
+```typescript
+import {
+  CredatError,    // Base class
+  AgentError,     // Agent creation/loading
+  DelegationError,// Delegation issuance/verification
+  HandshakeError, // Handshake protocol
+  DIDError,       // DID resolution
+  CredentialError,// Low-level credential operations
+} from "credat";
+```
+
+### `CredatError`
+
+The base error class. All other error classes extend it.
+
+| Property | Type | Description |
+|---|---|---|
+| `code` | `string` | Machine-readable error code (from `ErrorCodes`) |
+| `message` | `string` | Technical error message |
+| `humanMessage` | `string \| undefined` | Optional plain-language explanation |
+
+### Example
+
+```typescript
+import { createAgent, AgentError, ErrorCodes } from "credat";
+
+try {
+  await createAgent({ domain: "" });
+} catch (error) {
+  if (error instanceof AgentError) {
+    console.log(error.code);    // "AGENT_CREATION_FAILED"
+    console.log(error.message); // "Domain is required to create an agent"
+  }
+}
+```
+
+---
+
+## Error codes
+
+### DID errors
+
+| Code | Thrown by | Meaning |
+|---|---|---|
+| `DID_NOT_FOUND` | `resolveDID`, `resolveDidWeb` | DID could not be found at the expected URL |
+| `DID_METHOD_UNSUPPORTED` | `resolveDID` | Unsupported DID method (only `key` and `web` are supported) |
+| `DID_RESOLUTION_FAILED` | `resolveDID` | Invalid DID format |
+
+### Agent errors
+
+| Code | Thrown by | Meaning |
+|---|---|---|
+| `AGENT_CREATION_FAILED` | `createAgent` | Missing or invalid configuration (e.g. empty domain) |
+| `AGENT_NOT_FOUND` | `loadAgent` | No agent with this DID in storage |
+| `AGENT_KEY_INVALID` | various | Key material is corrupt or invalid |
+
+### Delegation errors
+
+| Code | Where | Meaning |
+|---|---|---|
+| `DELEGATION_INVALID` | `verifyDelegation` | Delegation credential is malformed |
+| `DELEGATION_EXPIRED` | `verifyDelegation` | Delegation has expired (`validUntil` in the past) |
+| `DELEGATION_REVOKED` | `verifyDelegation` | Owner revoked this delegation via status list |
+| `DELEGATION_SIGNATURE_INVALID` | `verifyDelegation` | Signature doesn't match the owner's public key |
+| `DELEGATION_SCOPE_INVALID` | `delegate` | Empty scopes array |
+
+### Handshake errors
+
+| Code | Where | Meaning |
+|---|---|---|
+| `HANDSHAKE_INVALID_NONCE` | `verifyPresentation` | Presentation nonce doesn't match challenge nonce |
+| `HANDSHAKE_EXPIRED` | `verifyPresentation` | Challenge has expired |
+| `HANDSHAKE_VERIFICATION_FAILED` | `verifyPresentation` | Agent's nonce signature is invalid |
+
+### Credential errors (low-level)
+
+| Code | Where | Meaning |
+|---|---|---|
+| `CREDENTIAL_INVALID_FORMAT` | `verifySdJwtVc` | Credential is not a valid SD-JWT VC |
+| `CREDENTIAL_EXPIRED` | `verifySdJwtVc` | Credential has expired |
+| `CREDENTIAL_SIGNATURE_INVALID` | `verifySdJwtVc` | Signature verification failed |
+| `STATUS_LIST_INVALID` | status list functions | Status list data is malformed |
+
+---
+
+## `ErrorCodes` constant
+
+All error codes are available as a constant for switch statements and comparisons:
+
+```typescript
+import { ErrorCodes } from "credat";
+
+// ErrorCodes.DID_NOT_FOUND === "DID_NOT_FOUND"
+// ErrorCodes.DELEGATION_EXPIRED === "DELEGATION_EXPIRED"
+// etc.
+```
+
+### Full list
+
+```typescript
+const ErrorCodes = {
+  // DID
+  DID_NOT_FOUND: "DID_NOT_FOUND",
+  DID_METHOD_UNSUPPORTED: "DID_METHOD_UNSUPPORTED",
+  DID_RESOLUTION_FAILED: "DID_RESOLUTION_FAILED",
+
+  // Credential
+  CREDENTIAL_INVALID_FORMAT: "CREDENTIAL_INVALID_FORMAT",
+  CREDENTIAL_EXPIRED: "CREDENTIAL_EXPIRED",
+  CREDENTIAL_SIGNATURE_INVALID: "CREDENTIAL_SIGNATURE_INVALID",
+  STATUS_LIST_INVALID: "STATUS_LIST_INVALID",
+
+  // Agent
+  AGENT_CREATION_FAILED: "AGENT_CREATION_FAILED",
+  AGENT_NOT_FOUND: "AGENT_NOT_FOUND",
+  AGENT_KEY_INVALID: "AGENT_KEY_INVALID",
+
+  // Delegation
+  DELEGATION_INVALID: "DELEGATION_INVALID",
+  DELEGATION_EXPIRED: "DELEGATION_EXPIRED",
+  DELEGATION_REVOKED: "DELEGATION_REVOKED",
+  DELEGATION_SIGNATURE_INVALID: "DELEGATION_SIGNATURE_INVALID",
+  DELEGATION_SCOPE_INVALID: "DELEGATION_SCOPE_INVALID",
+
+  // Handshake
+  HANDSHAKE_INVALID_NONCE: "HANDSHAKE_INVALID_NONCE",
+  HANDSHAKE_EXPIRED: "HANDSHAKE_EXPIRED",
+  HANDSHAKE_VERIFICATION_FAILED: "HANDSHAKE_VERIFICATION_FAILED",
+} as const;
+```
+
+---
+
+## Verification errors vs thrown errors
+
+There are two kinds of errors in Credat:
+
+### Thrown errors
+
+Functions like `createAgent`, `delegate`, `resolveDID` **throw** on invalid input. These are programming errors --- your code passed bad data.
+
+```typescript
+try {
+  await createAgent({ domain: "" }); // Throws AgentError
+} catch (e) {
+  // Handle the error
+}
+```
+
+### Result errors
+
+Functions like `verifyDelegation` and `verifyPresentation` **return** errors in the result object.
+These are expected failures --- a credential might be expired or have an invalid signature.
+
+```typescript
+const result = await verifyDelegation(token, options);
+if (!result.valid) {
+  // result.errors contains VerificationError[]
+  for (const err of result.errors) {
+    console.log(err.code, err.message);
+  }
+}
+```
+
+This distinction is intentional. Verification is a normal operation that can legitimately fail --- it shouldn't require try/catch.

@@ -1,0 +1,186 @@
+# Handshake API
+
+## `createChallenge`
+
+Creates a challenge message with a random nonce for the trust handshake.
+
+```typescript
+function createChallenge(options: { from: string }): ChallengeMessage
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `from` | `string` | Yes | DID of the challenger (the service) |
+
+### Returns
+
+#### `ChallengeMessage`
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `"credat:challenge"` | Message type identifier |
+| `nonce` | `string` | Base64url-encoded 32-byte random value |
+| `from` | `string` | The challenger's DID |
+| `timestamp` | `string` | ISO 8601 creation time |
+
+### Example
+
+```typescript
+import { createChallenge } from "credat";
+
+const challenge = createChallenge({ from: "did:web:service.com" });
+// {
+//   type: "credat:challenge",
+//   nonce: "dG9rZW4tMTIz...",
+//   from: "did:web:service.com",
+//   timestamp: "2026-02-24T10:00:00.000Z"
+// }
+```
+
+---
+
+## `presentCredentials`
+
+Creates a presentation message: the agent signs the challenge nonce and attaches its delegation credential.
+
+```typescript
+function presentCredentials(options: PresentOptions): Promise<PresentationMessage>
+```
+
+### Parameters
+
+#### `PresentOptions`
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `challenge` | `ChallengeMessage` | Yes | The challenge from the service |
+| `delegation` | `string` | Yes | The raw delegation token (`delegation.raw`) |
+| `agent` | `AgentIdentity` | Yes | The agent's full identity |
+
+### Returns
+
+#### `PresentationMessage`
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `"credat:presentation"` | Message type identifier |
+| `delegation` | `string` | The delegation credential (SD-JWT VC) |
+| `nonce` | `string` | The challenge nonce (echoed back) |
+| `proof` | `string` | Base64url-encoded signature of the nonce |
+| `from` | `string` | The agent's DID |
+
+### Example
+
+```typescript
+import { presentCredentials } from "credat";
+
+const presentation = await presentCredentials({
+  challenge,
+  delegation: delegation.raw,
+  agent: agentIdentity,
+});
+```
+
+---
+
+## `verifyPresentation`
+
+Verifies a complete presentation: nonce proof, agent identity, and delegation credential.
+
+```typescript
+function verifyPresentation(
+  presentation: PresentationMessage,
+  options: VerifyPresentationOptions,
+): Promise<DelegationResult>
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `presentation` | `PresentationMessage` | Yes | The presentation from the agent |
+
+#### `VerifyPresentationOptions`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `challenge` | `ChallengeMessage` | Yes | --- | The original challenge |
+| `ownerPublicKey` | `Uint8Array` | Yes | --- | Owner's public key |
+| `agentPublicKey` | `Uint8Array` | Yes | --- | Agent's public key |
+| `agentAlgorithm` | `"ES256" \| "EdDSA"` | No | auto-detected | Agent's signing algorithm |
+
+### Returns
+
+`DelegationResult` --- same shape as `verifyDelegation`. See [Delegation API](/docs/api/delegation#delegationresult).
+
+### Verification steps
+
+1. **Nonce match** --- Presentation nonce matches the challenge nonce
+2. **Nonce proof** --- Agent's signature over the nonce is valid (proves identity)
+3. **Delegation** --- The delegation VC is valid, signed by the owner, and not expired
+
+If any step fails, the function returns early with the relevant error.
+
+### Algorithm detection
+
+If `agentAlgorithm` is not specified, it's inferred from the public key:
+- 33 bytes -> `ES256` (P-256 compressed)
+- 32 bytes -> `EdDSA` (Ed25519)
+
+### Example
+
+```typescript
+import { verifyPresentation } from "credat";
+
+const result = await verifyPresentation(presentation, {
+  challenge,
+  ownerPublicKey: ownerKeys.publicKey,
+  agentPublicKey: agent.keyPair.publicKey,
+});
+
+if (result.valid) {
+  console.log(result.agent);   // Agent DID
+  console.log(result.owner);   // Owner DID
+  console.log(result.scopes);  // Granted scopes
+}
+```
+
+### Errors in result
+
+| Code | Meaning |
+|---|---|
+| `HANDSHAKE_INVALID_NONCE` | Nonce doesn't match (replay attack or wrong challenge) |
+| `HANDSHAKE_VERIFICATION_FAILED` | Agent's signature over nonce is invalid |
+| `DELEGATION_SIGNATURE_INVALID` | Delegation not signed by the claimed owner |
+| `DELEGATION_EXPIRED` | Delegation credential has expired |
+
+---
+
+## Message types
+
+All three message types are exported as TypeScript types:
+
+```typescript
+import type {
+  ChallengeMessage,
+  PresentationMessage,
+  AckMessage,
+  HandshakeMessage, // Union of all three
+} from "credat";
+```
+
+### `AckMessage`
+
+The acknowledgment message sent after verification. This is a convenience type --- Credat does not generate it automatically.
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `"credat:ack"` | Message type identifier |
+| `verified` | `boolean` | Whether verification succeeded |
+| `scopes` | `string[] \| undefined` | Granted scopes (if verified) |
+| `counterChallenge` | `ChallengeMessage \| undefined` | For mutual authentication |
+| `delegation` | `string \| undefined` | Service's delegation (for mutual auth) |
+| `proof` | `string \| undefined` | Service's nonce proof (for mutual auth) |
+| `from` | `string \| undefined` | Service's DID |

@@ -1,0 +1,63 @@
+# Credat
+
+## The trust layer for AI agents
+
+Your AI agent can read emails, make purchases, and call APIs on your behalf.
+But how does a service know your agent is really yours? How does it know what the agent is allowed to do?
+
+**Credat** solves this. It gives every agent a verifiable identity, scoped permissions, and a way to prove both
+to any service --- in three messages.
+
+## What Credat does
+
+| Problem | Credat's answer |
+|---|---|
+| "Who is this agent?" | Every agent gets a **globally unique identity** tied to your domain |
+| "What can it do?" | Owners issue **delegation credentials** with specific scopes |
+| "Can I trust it?" | A **3-message handshake** cryptographically proves identity and permissions |
+| "Is this still valid?" | Delegations have **expiration**, **revocation**, and **constraints** |
+
+## Quick taste
+
+```typescript
+import { createAgent, delegate, createChallenge, presentCredentials, verifyPresentation } from "credat";
+
+// 1. Owner creates an agent identity
+const agent = await createAgent({ domain: "acme.com", algorithm: "ES256" });
+
+// 2. Owner delegates specific permissions to the agent
+const delegation = await delegate({
+  agent: agent.did,
+  owner: "did:web:acme.com",
+  ownerKeyPair: ownerKeys,
+  scopes: ["email:read", "calendar:write"],
+  constraints: { allowedDomains: ["google.com"] },
+});
+
+// 3. Service challenges the agent
+const challenge = createChallenge({ from: "did:web:service.com" });
+
+// 4. Agent presents its credentials
+const presentation = await presentCredentials({
+  challenge,
+  delegation: delegation.raw,
+  agent,
+});
+
+// 5. Service verifies everything
+const result = await verifyPresentation(presentation, {
+  challenge,
+  ownerPublicKey: ownerKeys.publicKey,
+  agentPublicKey: agent.keyPair.publicKey,
+});
+
+console.log(result.valid);   // true
+console.log(result.scopes);  // ["email:read", "calendar:write"]
+```
+
+## Next steps
+
+- [**Getting Started**](/docs/getting-started) --- Install and run your first example in 2 minutes
+- [**Concepts**](/docs/concepts/agent-identity) --- Understand how agent identity, delegation, and trust verification work
+- [**Guides**](/docs/guides/basic-agent) --- Step-by-step tutorials for common use cases
+- [**API Reference**](/docs/api/agent) --- Full function signatures, parameters, and return types

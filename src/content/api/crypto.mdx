@@ -1,0 +1,183 @@
+# Crypto API
+
+Low-level cryptographic primitives. Most users won't need these directly --- they're used internally
+by `createAgent`, `delegate`, and the handshake functions.
+
+---
+
+## `generateKeyPair`
+
+Generates a new cryptographic key pair.
+
+```typescript
+function generateKeyPair(algorithm: Algorithm): KeyPair
+```
+
+### Parameters
+
+| Parameter | Type | Values |
+|---|---|---|
+| `algorithm` | `Algorithm` | `"ES256"` (P-256) or `"EdDSA"` (Ed25519) |
+
+### Returns
+
+#### `KeyPair`
+
+| Field | Type | Description |
+|---|---|---|
+| `algorithm` | `Algorithm` | The algorithm used |
+| `privateKey` | `Uint8Array` | 32-byte private key |
+| `publicKey` | `Uint8Array` | Compressed public key (33 bytes for ES256, 32 bytes for EdDSA) |
+
+### Example
+
+```typescript
+import { generateKeyPair } from "credat";
+
+const keys = generateKeyPair("ES256");
+// keys.publicKey  → Uint8Array(33) (P-256 compressed)
+// keys.privateKey → Uint8Array(32)
+
+const edKeys = generateKeyPair("EdDSA");
+// edKeys.publicKey  → Uint8Array(32) (Ed25519)
+// edKeys.privateKey → Uint8Array(32)
+```
+
+---
+
+## `sign`
+
+Signs a payload with a private key.
+
+```typescript
+function sign(
+  payload: Uint8Array,
+  privateKey: Uint8Array,
+  algorithm: Algorithm,
+): Uint8Array
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `payload` | `Uint8Array` | Data to sign |
+| `privateKey` | `Uint8Array` | Private key |
+| `algorithm` | `Algorithm` | `"ES256"` or `"EdDSA"` |
+
+### Returns
+
+`Uint8Array` --- the signature.
+
+### Example
+
+```typescript
+import { sign, generateKeyPair } from "credat";
+
+const keys = generateKeyPair("ES256");
+const message = new TextEncoder().encode("hello");
+const signature = sign(message, keys.privateKey, "ES256");
+```
+
+---
+
+## `verifySignature`
+
+Verifies a signature against a payload and public key.
+
+```typescript
+function verifySignature(
+  payload: Uint8Array,
+  signature: Uint8Array,
+  publicKey: Uint8Array,
+  algorithm: Algorithm,
+): boolean
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `payload` | `Uint8Array` | Original data |
+| `signature` | `Uint8Array` | Signature to verify |
+| `publicKey` | `Uint8Array` | Public key |
+| `algorithm` | `Algorithm` | `"ES256"` or `"EdDSA"` |
+
+### Returns
+
+`boolean` --- `true` if the signature is valid. Returns `false` (never throws) on invalid signatures.
+
+### Example
+
+```typescript
+import { sign, verifySignature, generateKeyPair } from "credat";
+
+const keys = generateKeyPair("EdDSA");
+const message = new TextEncoder().encode("hello");
+const sig = sign(message, keys.privateKey, "EdDSA");
+
+const valid = verifySignature(message, sig, keys.publicKey, "EdDSA");
+// true
+```
+
+---
+
+## Key encoding helpers
+
+### `publicKeyToJwk`
+
+Converts a raw public key to JWK format.
+
+```typescript
+function publicKeyToJwk(publicKey: Uint8Array, algorithm: Algorithm): JsonWebKey
+```
+
+### `jwkToPublicKey`
+
+Converts a JWK back to a raw public key.
+
+```typescript
+function jwkToPublicKey(jwk: JsonWebKey): Uint8Array
+```
+
+### `uint8ArrayToBase64url`
+
+Encodes bytes to base64url string.
+
+```typescript
+function uint8ArrayToBase64url(bytes: Uint8Array): string
+```
+
+### `base64urlToUint8Array`
+
+Decodes a base64url string to bytes.
+
+```typescript
+function base64urlToUint8Array(base64url: string): Uint8Array
+```
+
+### Example
+
+```typescript
+import { publicKeyToJwk, jwkToPublicKey, generateKeyPair } from "credat";
+
+const keys = generateKeyPair("ES256");
+
+// To JWK
+const jwk = publicKeyToJwk(keys.publicKey, "ES256");
+// { kty: "EC", crv: "P-256", x: "...", y: "..." }
+
+// Back to raw bytes
+const raw = jwkToPublicKey(jwk);
+// Uint8Array(33) — compressed P-256 public key
+```
+
+---
+
+## `Algorithm` type
+
+```typescript
+type Algorithm = "ES256" | "EdDSA";
+```
+
+Note: `ES256K` (secp256k1) is supported at the agent level via `createAgent` but not exposed in the low-level `generateKeyPair`/`sign`/`verifySignature` functions. Agent creation handles ES256K keys internally.

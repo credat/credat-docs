@@ -1,0 +1,81 @@
+# Getting Started
+
+## Installation
+
+```bash
+npm install credat
+```
+
+Credat has zero runtime dependencies beyond `@noble/curves` and `@noble/hashes` for cryptography.
+It works in Node.js 22+ and modern browsers.
+
+## Your first agent in 30 seconds
+
+```typescript
+import { createAgent, delegate, verifyDelegation } from "credat";
+
+// 1. Create an agent identity on your domain
+const agent = await createAgent({
+  domain: "acme.com",
+  algorithm: "ES256",
+});
+
+console.log(agent.did);
+// "did:web:acme.com"
+
+// 2. Delegate permissions (in real usage, ownerKeyPair comes from your key management)
+const ownerKeys = await generateOwnerKeys(); // see below
+
+const delegation = await delegate({
+  agent: agent.did,
+  owner: "did:web:acme.com:owner",
+  ownerKeyPair: ownerKeys,
+  scopes: ["files:read", "files:write"],
+  validUntil: "2026-12-31T23:59:59Z",
+});
+
+// 3. Verify the delegation
+const result = await verifyDelegation(delegation.raw, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+
+console.log(result.valid);   // true
+console.log(result.scopes);  // ["files:read", "files:write"]
+console.log(result.agent);   // "did:web:acme.com"
+console.log(result.owner);   // "did:web:acme.com:owner"
+```
+
+### Generating owner keys
+
+```typescript
+import { generateKeyPair } from "credat";
+
+const ownerKeys = generateKeyPair("ES256");
+// { algorithm: "ES256", publicKey: Uint8Array, privateKey: Uint8Array }
+```
+
+## What just happened?
+
+1. **`createAgent`** generated a cryptographic key pair and created a DID (Decentralized Identifier) on `acme.com`.
+   The DID is a globally unique identifier like `did:web:acme.com` that can be resolved by anyone to get the agent's public key.
+
+2. **`delegate`** created a signed credential from the owner to the agent, granting it `files:read` and `files:write` permissions.
+   This credential is cryptographically signed by the owner's private key --- it cannot be forged or tampered with.
+
+3. **`verifyDelegation`** verified the signature, checked expiration, and extracted the scopes.
+   Any service can do this with just the owner's public key.
+
+## Supported algorithms
+
+| Algorithm | Curve | Use case |
+|---|---|---|
+| `ES256` (default) | P-256 | General purpose, widely supported |
+| `EdDSA` | Ed25519 | Fast, compact signatures |
+| `ES256K` | secp256k1 | Blockchain compatibility |
+
+## Next steps
+
+- [Create your first agent](/docs/guides/basic-agent) --- A detailed walkthrough
+- [Understand agent identity](/docs/concepts/agent-identity) --- How DIDs work
+- [Issue delegations](/docs/guides/delegation) --- Grant and verify permissions
+- [Implement the handshake](/docs/guides/handshake) --- Prove identity to services

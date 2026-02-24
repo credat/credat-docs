@@ -1,0 +1,126 @@
+# Delegation
+
+## The problem
+
+Your agent has an identity. But identity alone doesn't answer the question:
+**"What is this agent allowed to do?"**
+
+An agent claiming to be from `acme.com` might have full admin access, or it might only be allowed to read emails.
+Without a way to express and verify permissions, services have to either trust everything or block everything.
+
+## How Credat solves it
+
+A **delegation** is a cryptographically signed permission slip from an owner to an agent.
+
+It says: *"I (the owner) authorize this agent to do X, Y, and Z, until this date, under these constraints."*
+
+```typescript
+import { delegate } from "credat";
+
+const delegation = await delegate({
+  agent: "did:web:acme.com:agent-1",
+  owner: "did:web:acme.com",
+  ownerKeyPair: ownerKeys,
+  scopes: ["email:read", "email:send"],
+  constraints: {
+    allowedDomains: ["gmail.com"],
+    maxTransactionValue: 1000,
+  },
+  validUntil: "2026-06-01T00:00:00Z",
+});
+```
+
+The resulting credential (`delegation.raw`) is an SD-JWT VC --- a compact, signed token that the agent can present to any service.
+
+## What's in a delegation?
+
+| Field | Purpose |
+|---|---|
+| `agent` | DID of the agent receiving the delegation |
+| `owner` | DID of the owner granting it |
+| `scopes` | Array of permission strings (e.g. `["files:read", "api:call"]`) |
+| `constraints` | Optional limits (domains, transaction values, rate limits) |
+| `validFrom` | When the delegation becomes active (ISO 8601) |
+| `validUntil` | When it expires (ISO 8601) |
+
+## Verification
+
+Any service can verify a delegation with just the owner's public key:
+
+```typescript
+import { verifyDelegation } from "credat";
+
+const result = await verifyDelegation(delegation.raw, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+
+if (result.valid) {
+  console.log(result.scopes);      // ["email:read", "email:send"]
+  console.log(result.constraints); // { allowedDomains: ["gmail.com"], ... }
+} else {
+  console.log(result.errors);      // What went wrong
+}
+```
+
+Verification checks:
+1. **Signature** --- Was this really signed by the owner?
+2. **Expiration** --- Is the delegation still valid?
+3. **Revocation** --- Has the owner revoked it? (optional)
+
+## Constraints
+
+Constraints are typed common fields plus an open escape hatch for custom data.
+
+### Built-in constraint fields
+
+| Field | Type | Meaning |
+|---|---|---|
+| `maxTransactionValue` | `number` | Maximum value per transaction |
+| `validUntil` | `string` | Expiration (ISO 8601) |
+| `allowedDomains` | `string[]` | Domains the agent can interact with |
+| `rateLimit` | `number` | Max operations per time period |
+
+### Custom constraints
+
+You can add any key-value pair:
+
+```typescript
+const delegation = await delegate({
+  // ...
+  constraints: {
+    allowedDomains: ["api.stripe.com"],
+    maxTransactionValue: 500,
+    // Custom constraints
+    environment: "production",
+    team: "engineering",
+  },
+});
+```
+
+**Important:** Credat includes constraints in the credential but does not enforce them.
+Enforcement is your application's job. Credat gives you the data; you write the rules.
+
+## Selective disclosure
+
+Scopes and constraints use **selective disclosure** by default.
+The agent can choose which scopes to reveal when presenting the credential:
+
+- An agent with `["email:read", "email:send", "files:admin"]` can present only `["email:read"]` to a service that only needs email access.
+- Constraints can be selectively disclosed the same way.
+
+This is privacy-preserving: the agent doesn't have to reveal all its permissions to every service.
+
+## Revocation
+
+Delegations can be revoked using status lists:
+
+```typescript
+const delegation = await delegate({
+  // ...
+  statusListUrl: "https://acme.com/.well-known/status-list.json",
+  statusListIndex: 42,
+});
+```
+
+The owner can later flip bit 42 in the status list to revoke this specific delegation without affecting others.
+See the [API reference](/docs/api/delegation) for details.

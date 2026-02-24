@@ -1,0 +1,206 @@
+# Issue & Verify Delegations
+
+This guide shows how an owner grants permissions to an agent, and how a service verifies them.
+
+## The flow
+
+```
+Owner                            Agent                         Service
+  |                                |                              |
+  |  1. Issue delegation           |                              |
+  |------------------------------->|                              |
+  |                                |  2. Present delegation       |
+  |                                |----------------------------->|
+  |                                |                              |
+  |                                |  3. Verification result      |
+  |                                |<-----------------------------|
+```
+
+## Step 1: Set up owner and agent
+
+```typescript
+import { createAgent, generateKeyPair } from "credat";
+
+// Owner's key pair (in production, load from a secure key store)
+const ownerKeys = generateKeyPair("ES256");
+const ownerDid = "did:web:acme.com";
+
+// Create the agent
+const agent = await createAgent({
+  domain: "acme.com",
+  path: "agents/email-bot",
+  algorithm: "ES256",
+});
+```
+
+## Step 2: Issue a delegation
+
+```typescript
+import { delegate } from "credat";
+
+const delegation = await delegate({
+  agent: agent.did,                    // Who receives the delegation
+  owner: ownerDid,                     // Who grants it
+  ownerKeyPair: ownerKeys,             // Owner signs with their private key
+  scopes: ["email:read", "email:send"],
+  constraints: {
+    allowedDomains: ["gmail.com", "outlook.com"],
+    maxTransactionValue: 0,            // No financial operations
+    rateLimit: 100,                    // Max 100 operations
+  },
+  validFrom: "2026-01-01T00:00:00Z",
+  validUntil: "2026-12-31T23:59:59Z",
+});
+
+console.log(delegation.raw);
+// "eyJhbGciOiJFUzI1NiIs..." --- compact SD-JWT VC token
+
+console.log(delegation.claims);
+// {
+//   agent: "did:web:acme.com:agents:email-bot",
+//   owner: "did:web:acme.com",
+//   scopes: ["email:read", "email:send"],
+//   constraints: { allowedDomains: ["gmail.com", "outlook.com"], ... },
+//   validFrom: "2026-01-01T00:00:00Z",
+//   validUntil: "2026-12-31T23:59:59Z"
+// }
+```
+
+The `delegation.raw` string is what the agent stores and presents to services. It's a self-contained, signed credential.
+
+## Step 3: Verify a delegation
+
+On the service side, verify with just the owner's public key:
+
+```typescript
+import { verifyDelegation } from "credat";
+
+const result = await verifyDelegation(delegation.raw, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+
+if (result.valid) {
+  console.log("Agent:", result.agent);       // "did:web:acme.com:agents:email-bot"
+  console.log("Owner:", result.owner);       // "did:web:acme.com"
+  console.log("Scopes:", result.scopes);     // ["email:read", "email:send"]
+  console.log("Constraints:", result.constraints);
+  console.log("Valid until:", result.validUntil);
+} else {
+  console.error("Verification failed:", result.errors);
+}
+```
+
+## Step 4: Check scopes before acting
+
+```typescript
+import { hasScope, hasAllScopes } from "credat";
+
+// Single scope check
+if (hasScope(result, "email:send")) {
+  // OK to send email
+  await sendEmail(payload);
+}
+
+// Multiple scope check
+if (hasAllScopes(result, ["email:read", "email:send"])) {
+  // Full email access granted
+}
+```
+
+## Step 5: Enforce constraints
+
+```typescript
+if (result.valid && result.constraints) {
+  const { allowedDomains, maxTransactionValue, rateLimit } = result.constraints;
+
+  // Check domain
+  if (allowedDomains && !allowedDomains.includes(targetDomain)) {
+    throw new Error(`Agent not allowed to access ${targetDomain}`);
+  }
+
+  // Check transaction value
+  if (maxTransactionValue !== undefined && amount > maxTransactionValue) {
+    throw new Error(`Transaction ${amount} exceeds limit ${maxTransactionValue}`);
+  }
+
+  // Check rate limit (you'd track this in your own state)
+  if (rateLimit !== undefined && currentCount >= rateLimit) {
+    throw new Error("Rate limit exceeded");
+  }
+}
+```
+
+## With revocation
+
+To support revoking delegations after they've been issued:
+
+```typescript
+import { delegate, createStatusList, setRevocationStatus, isRevoked } from "credat";
+
+// 1. Create a status list
+const statusList = createStatusList({ size: 1000 });
+
+// 2. Issue with a status list entry
+const delegation = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["files:read"],
+  statusListUrl: "https://acme.com/.well-known/status-list.json",
+  statusListIndex: 42,
+});
+
+// 3. Later, revoke it
+setRevocationStatus(statusList.bitstring, 42, true);
+
+// 4. Check revocation
+const revoked = isRevoked(statusList.bitstring, 42);
+console.log(revoked); // true
+```
+
+## With expiration
+
+```typescript
+// Short-lived delegation (1 hour)
+const shortLived = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["api:call"],
+  validUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+});
+
+// Verification will fail after expiration
+// result.valid === false
+// result.errors[0].code === "DELEGATION_EXPIRED"
+```
+
+## Error handling
+
+```typescript
+const result = await verifyDelegation(token, { ownerPublicKey });
+
+if (!result.valid) {
+  for (const error of result.errors) {
+    switch (error.code) {
+      case "DELEGATION_SIGNATURE_INVALID":
+        // Token wasn't signed by this owner
+        break;
+      case "DELEGATION_EXPIRED":
+        // Delegation has expired
+        break;
+      case "DELEGATION_REVOKED":
+        // Owner revoked this delegation
+        break;
+      case "DELEGATION_SCOPE_INVALID":
+        // No scopes provided
+        break;
+    }
+  }
+}
+```
+
+## Next steps
+
+- [Implement the handshake](/docs/guides/handshake) --- Combine delegation with identity proof
+- [Agent-to-agent trust](/docs/guides/agent-to-agent) --- Agents verifying each other

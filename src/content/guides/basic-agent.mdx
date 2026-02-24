@@ -1,0 +1,187 @@
+# Create Your First Agent
+
+This guide walks you through creating an agent identity, persisting it, and understanding the output.
+
+## Prerequisites
+
+```bash
+npm install credat
+```
+
+## Step 1: Create the agent
+
+```typescript
+import { createAgent } from "credat";
+
+const agent = await createAgent({
+  domain: "acme.com",
+  algorithm: "ES256",
+});
+
+console.log(agent.did);
+// "did:web:acme.com"
+```
+
+The `domain` is the domain where this agent's DID Document will be hosted.
+The `algorithm` determines the cryptographic curve used for key generation.
+
+### With a path
+
+For multiple agents on the same domain:
+
+```typescript
+const agent = await createAgent({
+  domain: "acme.com",
+  path: "agents/shopping-bot",
+  algorithm: "ES256",
+});
+
+console.log(agent.did);
+// "did:web:acme.com:agents:shopping-bot"
+```
+
+## Step 2: Inspect the identity
+
+```typescript
+console.log(agent);
+// {
+//   did: "did:web:acme.com",
+//   didDocument: {
+//     id: "did:web:acme.com",
+//     verificationMethod: [{
+//       id: "did:web:acme.com#key-0",
+//       type: "JsonWebKey2020",
+//       controller: "did:web:acme.com",
+//       publicKeyJwk: { kty: "EC", crv: "P-256", x: "...", y: "..." }
+//     }],
+//     authentication: ["did:web:acme.com#key-0"],
+//     assertionMethod: ["did:web:acme.com#key-0"]
+//   },
+//   keyPair: {
+//     algorithm: "ES256",
+//     publicKey: Uint8Array(33) [...],
+//     privateKey: Uint8Array(32) [...]
+//   },
+//   algorithm: "ES256",
+//   domain: "acme.com"
+// }
+```
+
+- **`did`** --- The globally unique identifier
+- **`didDocument`** --- The public key document to host on your domain
+- **`keyPair`** --- The raw key material (keep the private key secret!)
+
+## Step 3: Host the DID Document
+
+For other services to resolve your agent's identity, host the DID Document:
+
+```typescript
+// For did:web:acme.com, serve at:
+// https://acme.com/.well-known/did.json
+
+// Example: Express.js
+app.get("/.well-known/did.json", (req, res) => {
+  res.json(agent.didDocument);
+});
+
+// Example: Next.js API route
+export async function GET() {
+  return Response.json(agent.didDocument);
+}
+
+// Example: Static file
+import { writeFileSync } from "fs";
+writeFileSync(
+  "public/.well-known/did.json",
+  JSON.stringify(agent.didDocument, null, 2)
+);
+```
+
+## Step 4: Persist the identity
+
+Use a storage adapter to save and reload agent identities:
+
+```typescript
+import { createAgent, loadAgent, MemoryStorage } from "credat";
+
+const storage = new MemoryStorage();
+
+// Create and save
+const agent = await createAgent({
+  domain: "acme.com",
+  algorithm: "ES256",
+  storage,
+});
+
+// Later, reload by DID
+const same = await loadAgent({
+  did: "did:web:acme.com",
+  storage,
+});
+
+console.log(same.did === agent.did); // true
+```
+
+### Custom storage
+
+Implement `StorageAdapter` for any backing store:
+
+```typescript
+import type { StorageAdapter } from "credat";
+
+class RedisStorage implements StorageAdapter {
+  constructor(private redis: RedisClient) {}
+
+  async get<T>(collection: string, key: string): Promise<T | null> {
+    const data = await this.redis.get(`${collection}:${key}`);
+    return data ? JSON.parse(data) : null;
+  }
+
+  async set<T>(collection: string, key: string, value: T): Promise<void> {
+    await this.redis.set(`${collection}:${key}`, JSON.stringify(value));
+  }
+
+  async delete(collection: string, key: string): Promise<boolean> {
+    const result = await this.redis.del(`${collection}:${key}`);
+    return result > 0;
+  }
+
+  async list<T>(collection: string): Promise<Array<{ key: string; value: T }>> {
+    const keys = await this.redis.keys(`${collection}:*`);
+    const results = [];
+    for (const fullKey of keys) {
+      const key = fullKey.replace(`${collection}:`, "");
+      const value = await this.get<T>(collection, key);
+      if (value) results.push({ key, value });
+    }
+    return results;
+  }
+
+  async clear(collection?: string): Promise<void> {
+    if (collection) {
+      const keys = await this.redis.keys(`${collection}:*`);
+      if (keys.length) await this.redis.del(...keys);
+    } else {
+      await this.redis.flushdb();
+    }
+  }
+}
+```
+
+## Step 5: Choose an algorithm
+
+```typescript
+// P-256 (default) --- most widely supported
+const es256Agent = await createAgent({ domain: "acme.com", algorithm: "ES256" });
+
+// Ed25519 --- fastest, smallest signatures
+const eddsaAgent = await createAgent({ domain: "acme.com", algorithm: "EdDSA" });
+
+// secp256k1 --- blockchain ecosystem compatibility
+const es256kAgent = await createAgent({ domain: "acme.com", algorithm: "ES256K" });
+```
+
+## Next steps
+
+- [Issue delegations](/docs/guides/delegation) --- Grant your agent specific permissions
+- [Implement the handshake](/docs/guides/handshake) --- Prove identity to services
