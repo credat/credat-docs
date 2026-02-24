@@ -69,6 +69,7 @@ try {
 | `DELEGATION_REVOKED` | `verifyDelegation` | Owner revoked this delegation via status list |
 | `DELEGATION_SIGNATURE_INVALID` | `verifyDelegation` | Signature doesn't match the owner's public key |
 | `DELEGATION_SCOPE_INVALID` | `delegate` | Empty scopes array |
+| `DELEGATION_NOT_YET_VALID` | `verifyDelegation` | Delegation's `validFrom` is in the future |
 
 ### Handshake errors
 
@@ -127,6 +128,7 @@ const ErrorCodes = {
   DELEGATION_REVOKED: "DELEGATION_REVOKED",
   DELEGATION_SIGNATURE_INVALID: "DELEGATION_SIGNATURE_INVALID",
   DELEGATION_SCOPE_INVALID: "DELEGATION_SCOPE_INVALID",
+  DELEGATION_NOT_YET_VALID: "DELEGATION_NOT_YET_VALID",
 
   // Handshake
   HANDSHAKE_INVALID_NONCE: "HANDSHAKE_INVALID_NONCE",

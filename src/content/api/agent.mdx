@@ -16,7 +16,7 @@ function createAgent(config: AgentConfig): Promise<AgentIdentity>
 |---|---|---|---|---|
 | `domain` | `string` | Yes | --- | Domain to host the DID Document |
 | `path` | `string` | No | --- | Sub-path for multiple agents on the same domain |
-| `algorithm` | `"ES256" \| "EdDSA" \| "ES256K"` | No | `"ES256"` | Signing algorithm |
+| `algorithm` | `"ES256" \| "EdDSA"` | No | `"ES256"` | Signing algorithm |
 | `storage` | `StorageAdapter` | No | --- | Storage adapter for persisting the identity |
 
 ### Returns

@@ -37,12 +37,12 @@ const agent = await createAgent({
 | `did` | The unique identifier, e.g. `did:web:acme.com` |
 | `didDocument` | Public key and metadata, hosted at `https://acme.com/.well-known/did.json` |
 | `keyPair` | The cryptographic key pair (public + private) |
-| `algorithm` | The signing algorithm: `ES256`, `EdDSA`, or `ES256K` |
+| `algorithm` | The signing algorithm: `ES256` or `EdDSA` |
 | `domain` | The domain this identity lives on |
 
 ## DID methods
 
-Credat supports three DID methods. Each is suited for different scenarios.
+Credat supports two DID methods. Each is suited for different scenarios.
 
 ### `did:web` --- Domain-hosted identity
 
@@ -65,12 +65,6 @@ did:key:zDn...   (P-256)
 ```
 
 **When to use:** Testing, ephemeral agents, or offline scenarios where you don't need domain-hosted resolution.
-
-### `did:jwk` --- JWK-encoded identity
-
-The full JWK (JSON Web Key) is encoded in the DID.
-
-**When to use:** Interoperability with systems that work with JWKs natively.
 
 ## How resolution works
 

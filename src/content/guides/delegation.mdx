@@ -138,7 +138,12 @@ To support revoking delegations after they've been issued:
 import { delegate, createStatusList, setRevocationStatus, isRevoked } from "credat";
 
 // 1. Create a status list
-const statusList = createStatusList({ size: 1000 });
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: ownerDid,
+  url: "https://acme.com/.well-known/status-list.json",
+  size: 1000,
+});
 
 // 2. Issue with a status list entry
 const delegation = await delegate({
@@ -151,10 +156,10 @@ const delegation = await delegate({
 });
 
 // 3. Later, revoke it
-setRevocationStatus(statusList.bitstring, 42, true);
+setRevocationStatus(statusList, 42, true);
 
 // 4. Check revocation
-const revoked = isRevoked(statusList.bitstring, 42);
+const revoked = isRevoked(statusList, 42);
 console.log(revoked); // true
 ```
 

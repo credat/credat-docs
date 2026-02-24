@@ -1,0 +1,275 @@
+# Security Considerations
+
+Credat handles cryptographic keys, signed credentials, and challenge-response protocols.
+Getting the security model right matters. This page covers the most important things to watch out for in production.
+
+## Challenge TTL management
+
+Every handshake starts with a challenge containing a random nonce. If you don't expire challenges, an attacker who intercepts one can use it later.
+
+### What to do
+
+Set a short TTL on challenges and delete them after use:
+
+```typescript
+import { createChallenge } from "credat";
+
+const challenges = new Map<string, { challenge: ChallengeMessage; expiresAt: number }>();
+
+function issueChallenge(serviceDid: string) {
+  const challenge = createChallenge({ from: serviceDid });
+  const ttl = 5 * 60 * 1000; // 5 minutes
+
+  challenges.set(challenge.nonce, {
+    challenge,
+    expiresAt: Date.now() + ttl,
+  });
+
+  return challenge;
+}
+
+function consumeChallenge(nonce: string): ChallengeMessage | null {
+  const entry = challenges.get(nonce);
+  if (!entry) return null;
+
+  // Expired
+  if (Date.now() > entry.expiresAt) {
+    challenges.delete(nonce);
+    return null;
+  }
+
+  // One-time use: delete after consumption
+  challenges.delete(nonce);
+  return entry.challenge;
+}
+```
+
+### Guidelines
+
+| Setting | Recommended | Why |
+|---|---|---|
+| TTL | 2--5 minutes | Long enough for network latency, short enough to limit replay window |
+| One-time use | Always | A nonce used twice means something is wrong |
+| Cleanup | Periodic sweep | Don't let expired challenges accumulate in memory |
+
+If you use Redis or another external store, set a TTL on the key directly:
+
+```typescript
+await redis.set(`challenge:${nonce}`, JSON.stringify(challenge), "EX", 300);
+```
+
+## Nonce replay protection in distributed systems
+
+In a single-server setup, an in-memory `Map` handles nonce tracking. In a distributed system with multiple server instances, this breaks down --- a nonce consumed on server A is still valid on server B.
+
+### The problem
+
+```
+Agent sends presentation ──> Server A (consumes nonce)
+Agent replays same presentation ──> Server B (nonce still valid!) ← replay succeeds
+```
+
+### Solutions
+
+**1. Shared nonce store (recommended)**
+
+Use Redis, a database, or any shared store that all servers can access:
+
+```typescript
+import { createChallenge, verifyPresentation } from "credat";
+
+// Issue challenge --- store in Redis
+async function issueChallenge(serviceDid: string) {
+  const challenge = createChallenge({ from: serviceDid });
+  await redis.set(`nonce:${challenge.nonce}`, JSON.stringify(challenge), "EX", 300);
+  return challenge;
+}
+
+// Consume challenge --- atomic delete from Redis
+async function consumeChallenge(nonce: string): Promise<ChallengeMessage | null> {
+  // GETDEL is atomic: returns the value and deletes in one operation
+  const data = await redis.getDel(`nonce:${nonce}`);
+  return data ? JSON.parse(data) : null;
+}
+```
+
+The key property is **atomic deletion**: the lookup and delete must happen in a single operation. If you read first and delete second, two servers could read the same nonce before either deletes it.
+
+**2. Sticky sessions**
+
+Route all requests from the same agent to the same server instance. This lets you use in-memory nonce tracking, but adds complexity to your load balancer and reduces fault tolerance.
+
+**3. Nonce partitioning**
+
+Include the server instance ID in the nonce, so each server only needs to track its own nonces. This requires custom nonce generation and is more complex to implement.
+
+### Recommendation
+
+Use a shared Redis store with `GETDEL` for atomic consumption. It's simple, reliable, and scales to any number of server instances.
+
+## Key storage best practices
+
+Credat generates key pairs containing raw `Uint8Array` private keys. How you store these determines the security of your entire trust model.
+
+### What NOT to do
+
+```typescript
+// Never do this in production
+const agent = await createAgent({ domain: "acme.com" });
+writeFileSync("agent-keys.json", JSON.stringify({
+  privateKey: Array.from(agent.keyPair.privateKey),
+}));
+```
+
+Plain-text key files can be read by anyone with file system access. A compromised private key means an attacker can impersonate your agent.
+
+### What to do instead
+
+| Environment | Approach | Example |
+|---|---|---|
+| **Production** | Hardware Security Module (HSM) or cloud KMS | AWS KMS, Google Cloud KMS, Azure Key Vault |
+| **Production** | Encrypted at rest with envelope encryption | Encrypt the key with a KMS-managed key |
+| **Staging** | Encrypted environment variables | Injected at deploy time, not in source control |
+| **Development** | `MemoryStorage` | Keys live in process memory, gone on restart |
+| **Local persistence** | `SqliteStorage` with file permissions | `chmod 600` on the database file |
+
+### Custom secure storage
+
+Implement `StorageAdapter` with encryption:
+
+```typescript
+import type { StorageAdapter } from "credat";
+
+class EncryptedStorage implements StorageAdapter {
+  constructor(
+    private backing: StorageAdapter,
+    private encryptionKey: Uint8Array,
+  ) {}
+
+  async get<T>(collection: string, key: string): Promise<T | null> {
+    const encrypted = await this.backing.get<string>(collection, key);
+    if (!encrypted) return null;
+    return JSON.parse(decrypt(encrypted, this.encryptionKey));
+  }
+
+  async set<T>(collection: string, key: string, value: T): Promise<void> {
+    const encrypted = encrypt(JSON.stringify(value), this.encryptionKey);
+    await this.backing.set(collection, key, encrypted);
+  }
+
+  async delete(collection: string, key: string): Promise<boolean> {
+    return this.backing.delete(collection, key);
+  }
+
+  async list<T>(collection: string): Promise<Array<{ key: string; value: T }>> {
+    const entries = await this.backing.list<string>(collection);
+    return entries.map(({ key, value }) => ({
+      key,
+      value: JSON.parse(decrypt(value, this.encryptionKey)) as T,
+    }));
+  }
+
+  async clear(collection?: string): Promise<void> {
+    await this.backing.clear(collection);
+  }
+}
+```
+
+### Key rotation
+
+When you rotate an agent's keys:
+
+1. Create a new agent identity (new key pair, new DID Document)
+2. Re-issue delegations signed by the owner to the new agent DID
+3. Update the DID Document at the hosted URL
+4. Old delegations referencing the old agent DID will naturally fail verification
+
+Owner keys are even more critical. Rotating an owner key pair means re-issuing every delegation signed by that owner.
+
+## `validFrom` / `validUntil` enforcement
+
+Delegations support time-based validity windows via `validFrom` and `validUntil` fields. Credat verifies these during `verifyDelegation` and `verifyPresentation`.
+
+### How it works
+
+```typescript
+import { delegate, verifyDelegation } from "credat";
+
+const delegation = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["api:read"],
+  validFrom: "2026-03-01T00:00:00Z",  // Not valid before this
+  validUntil: "2026-03-31T23:59:59Z",  // Not valid after this
+});
+
+// Before March 1: result.valid === false, error code DELEGATION_NOT_YET_VALID
+// March 1--31:    result.valid === true
+// After March 31: result.valid === false, error code DELEGATION_EXPIRED
+const result = await verifyDelegation(delegation.raw, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+```
+
+### Clock skew
+
+Credat compares `validFrom` and `validUntil` against the verifier's system clock. In distributed systems, clock skew between servers can cause inconsistent results:
+
+- Server A's clock is 30 seconds ahead: delegation appears valid
+- Server B's clock is 30 seconds behind: delegation appears not yet valid
+
+**Mitigations:**
+
+1. **Use NTP** --- Synchronize all servers to a time source (most cloud providers do this automatically)
+2. **Add a buffer** --- Set `validFrom` a few minutes before the actual start time
+3. **Keep TTLs reasonable** --- A 1-hour delegation with 30 seconds of clock skew is fine; a 60-second delegation is not
+
+### Short-lived delegations
+
+For high-security operations, issue delegations with very short validity windows:
+
+```typescript
+// Valid for 5 minutes only
+const shortLived = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["payment:execute"],
+  constraints: { maxTransactionValue: 100 },
+  validUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+});
+```
+
+Short-lived delegations reduce the impact of credential theft: even if an attacker captures the token, it expires quickly.
+
+### Combining with revocation
+
+For maximum control, combine time-based validity with revocation:
+
+```typescript
+import { delegate, createStatusList, setRevocationStatus } from "credat";
+
+const statusList = createStatusList({
+  id: "prod-status-list",
+  issuer: ownerDid,
+  url: "https://acme.com/.well-known/status-list.json",
+});
+
+const delegation = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["api:admin"],
+  validUntil: "2026-12-31T23:59:59Z",
+  statusListUrl: "https://acme.com/.well-known/status-list.json",
+  statusListIndex: 0,
+});
+
+// If something goes wrong, revoke immediately --- don't wait for expiration
+setRevocationStatus(statusList, 0, true);
+```
+
+This gives you two layers of protection:
+- **Time-based**: Automatic expiration even if you forget to revoke
+- **Revocation**: Immediate invalidation when you detect a compromise

@@ -176,9 +176,6 @@ const es256Agent = await createAgent({ domain: "acme.com", algorithm: "ES256" })
 
 // Ed25519 --- fastest, smallest signatures
 const eddsaAgent = await createAgent({ domain: "acme.com", algorithm: "EdDSA" });
-
-// secp256k1 --- blockchain ecosystem compatibility
-const es256kAgent = await createAgent({ domain: "acme.com", algorithm: "ES256K" });
 ```
 
 ## Next steps

@@ -3,5 +3,6 @@ export default {
   "getting-started": "Getting Started",
   concepts: "Concepts",
   guides: "Guides",
+  security: "Security Considerations",
   api: "API Reference",
 };

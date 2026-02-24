@@ -180,4 +180,4 @@ const raw = jwkToPublicKey(jwk);
 type Algorithm = "ES256" | "EdDSA";
 ```
 
-Note: `ES256K` (secp256k1) is supported at the agent level via `createAgent` but not exposed in the low-level `generateKeyPair`/`sign`/`verifySignature` functions. Agent creation handles ES256K keys internally.
+Credat supports two algorithms: `ES256` (P-256, NIST curve) and `EdDSA` (Ed25519). Both are available across all functions.
