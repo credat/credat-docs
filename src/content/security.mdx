@@ -207,7 +207,7 @@ const delegation = await delegate({
 // Before March 1: result.valid === false, error code DELEGATION_NOT_YET_VALID
 // March 1--31:    result.valid === true
 // After March 31: result.valid === false, error code DELEGATION_EXPIRED
-const result = await verifyDelegation(delegation.raw, {
+const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeys.publicKey,
 });
 ```
@@ -262,8 +262,7 @@ const delegation = await delegate({
   ownerKeyPair: ownerKeys,
   scopes: ["api:admin"],
   validUntil: "2026-12-31T23:59:59Z",
-  statusListUrl: "https://acme.com/.well-known/status-list.json",
-  statusListIndex: 0,
+  statusList: { url: "https://acme.com/.well-known/status-list.json", index: 0 },
 });
 
 // If something goes wrong, revoke immediately --- don't wait for expiration

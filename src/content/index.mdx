@@ -40,7 +40,7 @@ const challenge = createChallenge({ from: "did:web:service.com" });
 // 4. Agent presents its credentials
 const presentation = await presentCredentials({
   challenge,
-  delegation: delegation.raw,
+  delegation: delegation.token,
   agent,
 });
 

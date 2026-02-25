@@ -52,7 +52,7 @@ const delegation = await delegate({
   validUntil: "2026-12-31T23:59:59Z",
 });
 
-console.log(delegation.raw);
+console.log(delegation.token);
 // "eyJhbGciOiJFUzI1NiIs..." --- compact SD-JWT VC token
 
 console.log(delegation.claims);
@@ -66,7 +66,7 @@ console.log(delegation.claims);
 // }
 ```
 
-The `delegation.raw` string is what the agent stores and presents to services. It's a self-contained, signed credential.
+The `delegation.token` string is what the agent stores and presents to services. It's a self-contained, signed credential.
 
 ## Step 3: Verify a delegation
 
@@ -75,7 +75,7 @@ On the service side, verify with just the owner's public key:
 ```typescript
 import { verifyDelegation } from "credat";
 
-const result = await verifyDelegation(delegation.raw, {
+const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeys.publicKey,
 });
 
@@ -151,8 +151,7 @@ const delegation = await delegate({
   owner: ownerDid,
   ownerKeyPair: ownerKeys,
   scopes: ["files:read"],
-  statusListUrl: "https://acme.com/.well-known/status-list.json",
-  statusListIndex: 42,
+  statusList: { url: "https://acme.com/.well-known/status-list.json", index: 42 },
 });
 
 // 3. Later, revoke it

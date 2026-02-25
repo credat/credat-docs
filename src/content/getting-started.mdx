@@ -28,21 +28,21 @@ const ownerKeys = await generateOwnerKeys(); // see below
 
 const delegation = await delegate({
   agent: agent.did,
-  owner: "did:web:acme.com:owner",
+  owner: "did:web:acme.com",
   ownerKeyPair: ownerKeys,
   scopes: ["files:read", "files:write"],
   validUntil: "2026-12-31T23:59:59Z",
 });
 
 // 3. Verify the delegation
-const result = await verifyDelegation(delegation.raw, {
+const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeys.publicKey,
 });
 
 console.log(result.valid);   // true
 console.log(result.scopes);  // ["files:read", "files:write"]
 console.log(result.agent);   // "did:web:acme.com"
-console.log(result.owner);   // "did:web:acme.com:owner"
+console.log(result.owner);   // "did:web:acme.com"
 ```
 
 ### Generating owner keys

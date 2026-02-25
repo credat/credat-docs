@@ -1,0 +1,313 @@
+# Revocation & Status Lists
+
+Functions for managing credential revocation using bitstring-based status lists, compatible with
+[W3C Status List 2021](https://www.w3.org/TR/2023/WD-vc-status-list-20230427/). Status lists are
+compact bitstrings where each index represents a credential --- flip a bit to revoke it.
+
+---
+
+## `createStatusList`
+
+Creates a new status list bitstring for tracking credential revocation.
+
+```typescript
+function createStatusList(options: CreateStatusListOptions): StatusListData
+```
+
+### Parameters
+
+#### `CreateStatusListOptions`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `id` | `string` | Yes | --- | Unique identifier for this status list |
+| `issuer` | `string` | Yes | --- | DID of the issuer who owns this list |
+| `url` | `string` | Yes | --- | Public URL where the status list credential will be hosted |
+| `size` | `number` | No | `131072` | Number of entries in the list (minimum `131072` per W3C spec) |
+
+### Returns
+
+#### `StatusListData`
+
+| Field | Type | Description |
+|---|---|---|
+| `bitstring` | `Uint8Array` | The raw bitstring (all bits initially `0` = not revoked) |
+| `issuer` | `string` | Issuer DID |
+| `id` | `string` | Status list identifier |
+| `size` | `number` | Total number of entries |
+
+### Example
+
+```typescript
+import { createStatusList } from "credat";
+
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: "did:web:acme.com",
+  url: "https://acme.com/.well-known/status/1",
+});
+
+// statusList.bitstring → Uint8Array (all zeros)
+// statusList.size → 131072
+```
+
+---
+
+## `setRevocationStatus`
+
+Sets or clears the revocation status for a specific index in the status list.
+
+```typescript
+function setRevocationStatus(
+  list: StatusListData,
+  index: number,
+  revoked: boolean,
+): void
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `list` | `StatusListData` | Yes | The status list to modify |
+| `index` | `number` | Yes | Index of the credential to revoke or un-revoke |
+| `revoked` | `boolean` | Yes | `true` to revoke, `false` to reinstate |
+
+### Returns
+
+`void` --- mutates the `list.bitstring` in place.
+
+### Errors
+
+Throws `CredentialError` with code `STATUS_LIST_INVALID` if `index` is out of range (negative or >= `list.size`).
+
+### Example
+
+```typescript
+import { createStatusList, setRevocationStatus } from "credat";
+
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: "did:web:acme.com",
+  url: "https://acme.com/.well-known/status/1",
+});
+
+// Revoke credential at index 42
+setRevocationStatus(statusList, 42, true);
+
+// Reinstate it
+setRevocationStatus(statusList, 42, false);
+```
+
+---
+
+## `isRevoked`
+
+Checks whether a specific index in the status list is marked as revoked.
+
+```typescript
+function isRevoked(list: StatusListData, index: number): boolean
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `list` | `StatusListData` | Yes | The status list to query |
+| `index` | `number` | Yes | Index to check |
+
+### Returns
+
+`boolean` --- `true` if the credential at the given index is revoked.
+
+### Errors
+
+Throws `CredentialError` with code `STATUS_LIST_INVALID` if `index` is out of range.
+
+### Example
+
+```typescript
+import { createStatusList, setRevocationStatus, isRevoked } from "credat";
+
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: "did:web:acme.com",
+  url: "https://acme.com/.well-known/status/1",
+});
+
+setRevocationStatus(statusList, 42, true);
+
+isRevoked(statusList, 42);  // true
+isRevoked(statusList, 43);  // false
+```
+
+---
+
+## `encodeStatusList`
+
+Compresses and encodes a status list bitstring for transport. The output is a gzip-compressed, base64url-encoded string as required by the W3C Status List specification.
+
+```typescript
+function encodeStatusList(bitstring: Uint8Array): string
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `bitstring` | `Uint8Array` | Yes | Raw bitstring from `StatusListData.bitstring` |
+
+### Returns
+
+`string` --- base64url-encoded gzip-compressed bitstring.
+
+### Example
+
+```typescript
+import { createStatusList, encodeStatusList } from "credat";
+
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: "did:web:acme.com",
+  url: "https://acme.com/.well-known/status/1",
+});
+
+const encoded = encodeStatusList(statusList.bitstring);
+// "H4sIAAAAAAAAA-3BMQ0AAA..." (base64url string)
+```
+
+---
+
+## `decodeStatusList`
+
+Decodes a compressed status list bitstring back to its raw `Uint8Array` form. The inverse of `encodeStatusList`.
+
+```typescript
+function decodeStatusList(encoded: string): Uint8Array
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `encoded` | `string` | Yes | Base64url gzip-compressed bitstring |
+
+### Returns
+
+`Uint8Array` --- the decompressed bitstring.
+
+### Example
+
+```typescript
+import { encodeStatusList, decodeStatusList } from "credat";
+
+const encoded = encodeStatusList(bitstring);
+const decoded = decodeStatusList(encoded);
+// decoded is identical to the original bitstring
+```
+
+---
+
+## `createStatusListCredential`
+
+Creates a signed JWT credential wrapping the status list for publication. The JWT uses the `statuslist+jwt` media type as defined by the specification.
+
+```typescript
+function createStatusListCredential(
+  options: CreateStatusListCredentialOptions,
+): string
+```
+
+### Parameters
+
+#### `CreateStatusListCredentialOptions`
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `list` | `StatusListData` | Yes | --- | The status list to publish |
+| `issuerPrivateKey` | `Uint8Array` | Yes | --- | Private key of the issuer |
+| `url` | `string` | Yes | --- | Public URL where this credential will be hosted |
+| `algorithm` | `Algorithm` | No | `"ES256"` | Signing algorithm (`"ES256"` or `"EdDSA"`) |
+
+### Returns
+
+`string` --- a signed JWT with `typ: "statuslist+jwt"` containing the gzip-compressed bitstring.
+
+### Example
+
+```typescript
+import { createStatusList, setRevocationStatus, createStatusListCredential, generateKeyPair } from "credat";
+
+const ownerKeys = generateKeyPair("ES256");
+
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: "did:web:acme.com",
+  url: "https://acme.com/.well-known/status/1",
+});
+
+// Revoke a credential
+setRevocationStatus(statusList, 42, true);
+
+// Publish the status list as a signed JWT
+const jwt = createStatusListCredential({
+  list: statusList,
+  issuerPrivateKey: ownerKeys.privateKey,
+  url: "https://acme.com/.well-known/status/1",
+});
+
+// Host this JWT at the url so verifiers can fetch it
+```
+
+---
+
+## `verifyStatusListCredential`
+
+Verifies a status list credential JWT and extracts the bitstring.
+
+```typescript
+function verifyStatusListCredential(
+  jwt: string,
+  publicKey: Uint8Array,
+): VerifyStatusListCredentialResult
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `jwt` | `string` | Yes | The `statuslist+jwt` token to verify |
+| `publicKey` | `Uint8Array` | Yes | Issuer's public key |
+
+### Returns
+
+#### `VerifyStatusListCredentialResult`
+
+| Field | Type | Description |
+|---|---|---|
+| `valid` | `boolean` | Whether the JWT signature is valid |
+| `bitstring` | `Uint8Array \| undefined` | The decoded bitstring (present when `valid` is `true`) |
+| `issuer` | `string \| undefined` | Issuer DID from the JWT (present when `valid` is `true`) |
+| `errors` | `string[] \| undefined` | Error messages (present when `valid` is `false`) |
+
+### Example
+
+```typescript
+import { verifyStatusListCredential, isRevoked, generateKeyPair } from "credat";
+
+const ownerKeys = generateKeyPair("ES256");
+
+// jwt was created with createStatusListCredential
+const result = verifyStatusListCredential(jwt, ownerKeys.publicKey);
+
+if (result.valid) {
+  // Check if a specific credential is revoked
+  const revoked = isRevoked(
+    { bitstring: result.bitstring!, issuer: result.issuer!, id: "", size: result.bitstring!.length * 8 },
+    42,
+  );
+  console.log("Credential 42 revoked:", revoked);
+} else {
+  console.error("Invalid status list:", result.errors);
+}
+```

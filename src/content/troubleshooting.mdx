@@ -1,0 +1,239 @@
+# Troubleshooting
+
+Common errors, their causes, and how to fix them. For a full list of error codes, see the [Errors API reference](/docs/api/errors).
+
+## Agent Creation Issues
+
+**`AGENT_CREATION_FAILED` --- "Domain is required"**
+
+You called `createAgent()` without a `domain`. Every agent needs a domain for its DID.
+
+```typescript
+// Wrong
+const agent = await createAgent({ algorithm: "ES256" });
+
+// Fix
+const agent = await createAgent({ domain: "acme.com", algorithm: "ES256" });
+```
+
+**Storage adapter errors**
+
+If you pass a `storage` option to `createAgent` or `loadAgent`, the adapter must implement all five methods: `get`, `set`, `delete`, `list`, and `clear`. A missing method throws at runtime.
+
+```typescript
+import { MemoryStorage, createAgent } from "credat";
+
+// For testing, use the built-in MemoryStorage
+const agent = await createAgent({
+  domain: "acme.com",
+  storage: new MemoryStorage(),
+});
+```
+
+For production, implement the full `StorageAdapter` interface. See [Custom storage](/docs/guides/basic-agent#custom-storage) for an example.
+
+---
+
+## Delegation Issues
+
+**`DELEGATION_EXPIRED`**
+
+The delegation's `validUntil` date is in the past. Issue a new delegation with a future expiration, or omit `validUntil` entirely for no expiration.
+
+```typescript
+const delegation = await delegate({
+  agent: agent.did,
+  owner: ownerDid,
+  ownerKeyPair: ownerKeys,
+  scopes: ["api:read"],
+  validUntil: "2027-12-31T23:59:59Z", // Set a future date
+});
+```
+
+**`DELEGATION_INVALID` / `DELEGATION_SIGNATURE_INVALID`**
+
+The SD-JWT VC signature doesn't match the owner's public key. The most common cause is passing the wrong key pair to `verifyDelegation`.
+
+```typescript
+// The ownerPublicKey must match the key pair used in delegate()
+const result = await verifyDelegation(delegation.token, {
+  ownerPublicKey: ownerKeys.publicKey, // Must be the same owner
+});
+```
+
+Check that you haven't mixed up agent keys and owner keys --- they are different key pairs.
+
+**`DELEGATION_SCOPE_INVALID`**
+
+You passed an empty scopes array. Provide at least one scope.
+
+```typescript
+// Wrong
+await delegate({ ...options, scopes: [] });
+
+// Fix
+await delegate({ ...options, scopes: ["api:read"] });
+```
+
+**Constraint mismatch**
+
+Credat verifies the delegation signature but does **not** enforce constraints. Your application code must check `result.constraints` and enforce them.
+
+```typescript
+const result = await verifyDelegation(delegation.token, {
+  ownerPublicKey: ownerKeys.publicKey,
+});
+
+if (result.valid) {
+  // You must enforce constraints yourself
+  const maxAmount = result.constraints?.maxTransactionValue;
+  if (maxAmount && requestedAmount > maxAmount) {
+    throw new Error("Transaction exceeds delegated limit");
+  }
+}
+```
+
+---
+
+## Handshake Issues
+
+**`HANDSHAKE_INVALID_NONCE`**
+
+The nonce in the presentation doesn't match the challenge. Three common causes:
+
+1. **Challenge expired** --- Default TTL is 5 minutes. If verification happens too late, the challenge is gone. Increase `challengeMaxAgeMs` or ensure faster round-trips.
+2. **Challenge was reused** --- Each challenge is single-use for replay protection. A second verification with the same nonce fails.
+3. **Wrong challenge object** --- You passed a different challenge to `verifyPresentation` than the one sent to the agent.
+
+> **Tip:** Log the nonce from both the challenge and the presentation to confirm they match before verification.
+
+**`HANDSHAKE_VERIFICATION_FAILED`**
+
+The agent's signature is invalid. Common causes:
+
+1. **Algorithm mismatch** --- The agent was created with `EdDSA` but the verifier expects `ES256` (or vice versa).
+2. **Wrong `agentPublicKey`** --- The public key passed to `verifyPresentation` doesn't match the agent that signed the presentation.
+3. **Key rotation** --- The agent's key pair was rotated after the delegation was issued.
+
+```typescript
+// Ensure the agentPublicKey matches the agent that created the presentation
+const result = await verifyPresentation(presentation, {
+  challenge,
+  agentPublicKey: agent.keyPair.publicKey, // Must match the signing agent
+  ownerPublicKey: ownerKeys.publicKey,
+});
+```
+
+**Stale challenge**
+
+Challenges have a timestamp. If your network round-trip takes longer than the configured TTL, verification fails. Increase the TTL:
+
+```typescript
+const result = await verifyPresentation(presentation, {
+  challenge,
+  agentPublicKey: agent.keyPair.publicKey,
+  ownerPublicKey: ownerKeys.publicKey,
+  challengeMaxAgeMs: 10 * 60 * 1000, // 10 minutes instead of default 5
+});
+```
+
+---
+
+## DID Resolution Issues
+
+**`DID_NOT_FOUND`**
+
+For `did:web`, the DID Document couldn't be fetched. Check these in order:
+
+1. **Correct URL** --- `did:web:example.com` resolves to `https://example.com/.well-known/did.json`. Verify the file is hosted there.
+2. **CORS headers** --- If resolving from a browser, the server must return `Access-Control-Allow-Origin` headers.
+3. **HTTPS required** --- `did:web` mandates HTTPS. HTTP URLs will fail.
+
+```bash
+# Quick check: can you fetch the DID Document?
+curl https://example.com/.well-known/did.json
+```
+
+**`DID_METHOD_UNSUPPORTED`**
+
+Only `did:web` and `did:key` are supported. If you pass a DID with another method (e.g., `did:ion:...`), resolution fails immediately.
+
+---
+
+## Key & Crypto Issues
+
+**Algorithm mismatch**
+
+ES256 keys are 33 bytes (compressed P-256). EdDSA keys are 32 bytes (Ed25519). If you mix them, signature verification fails silently --- it returns `false` instead of throwing.
+
+Always ensure the algorithm is consistent between agent creation, delegation, and verification.
+
+**Key format**
+
+All keys in Credat are raw `Uint8Array`. Use the built-in conversion utilities:
+
+```typescript
+import {
+  publicKeyToJwk,
+  jwkToPublicKey,
+  uint8ArrayToBase64url,
+  base64urlToUint8Array,
+} from "credat";
+
+// To JWK (for DID Documents, external APIs)
+const jwk = publicKeyToJwk(agent.keyPair.publicKey, "ES256");
+
+// From JWK
+const publicKey = jwkToPublicKey(jwk);
+
+// To/from string (for storage, transport)
+const encoded = uint8ArrayToBase64url(agent.keyPair.publicKey);
+const decoded = base64urlToUint8Array(encoded);
+```
+
+---
+
+## Common Patterns
+
+### Debugging with error codes
+
+All Credat errors include a `code` and optionally a `humanMessage` for end users.
+
+```typescript
+import { CredatError } from "credat";
+
+try {
+  const result = await verifyPresentation(presentation, options);
+} catch (error) {
+  if (error instanceof CredatError) {
+    console.error(`[${error.code}] ${error.message}`);
+    if (error.humanMessage) {
+      // Show this to end users
+      console.error(error.humanMessage);
+    }
+  }
+}
+```
+
+> **Tip:** For verification functions (`verifyDelegation`, `verifyPresentation`), check `result.valid` and `result.errors` instead of using try/catch. These functions return errors in the result object, not as exceptions. See [Verification errors vs thrown errors](/docs/api/errors#verification-errors-vs-thrown-errors).
+
+### Clock skew
+
+If agents and services run on different machines, clock differences cause `validFrom`/`validUntil` checks to fail unexpectedly.
+
+**Mitigations:**
+- Use NTP to synchronize all servers
+- Add small time buffers (e.g., set `validFrom` 30 seconds before the actual start)
+- Use reasonable TTLs --- hours, not seconds
+
+### "Everything verifies locally but fails in production"
+
+Run through this checklist:
+
+1. Is the DID Document hosted and accessible via HTTPS?
+2. Are you using the same key pair in production as in testing?
+3. Is the challenge TTL long enough for network latency?
+4. Are system clocks synchronized (NTP)?
+5. Is the delegation still valid (not expired, not revoked)?
+
+> **Tip:** Start debugging by fetching the DID Document manually (`curl https://yourdomain.com/.well-known/did.json`). If that fails, nothing else will work.

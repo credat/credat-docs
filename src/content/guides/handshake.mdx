@@ -55,7 +55,7 @@ const challenge = createChallenge({ from: "did:web:service.com" });
 // Agent receives the challenge and responds with a presentation
 const presentation = await presentCredentials({
   challenge,                    // The challenge from the service
-  delegation: delegation.raw,   // The delegation credential
+  delegation: delegation.token,   // The delegation credential
   agent,                        // Agent's full identity (keys + DID)
 });
 
@@ -105,7 +105,7 @@ async function callProtectedAPI(
   // 2. Create presentation
   const presentation = await presentCredentials({
     challenge,
-    delegation: delegation.raw,
+    delegation: delegation.token,
     agent,
   });
 

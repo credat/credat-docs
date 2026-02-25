@@ -1,0 +1,580 @@
+# Types
+
+Complete TypeScript type definitions exported by the `credat` package.
+
+---
+
+## Agent
+
+### `AgentConfig`
+
+Configuration object for creating a new agent identity.
+
+```typescript
+interface AgentConfig {
+  domain: string;
+  path?: string;
+  algorithm?: Algorithm;
+  storage?: StorageAdapter;
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `domain` | `string` | Yes | Domain to host the DID Document |
+| `path` | `string` | No | Sub-path for multiple agents on the same domain |
+| `algorithm` | `Algorithm` | No | Signing algorithm (`"ES256"` or `"EdDSA"`) |
+| `storage` | `StorageAdapter` | No | Storage adapter for persisting the identity |
+
+### `AgentIdentity`
+
+The resolved identity of an agent, returned by `createAgent` and `loadAgent`.
+
+```typescript
+interface AgentIdentity {
+  did: string;
+  didDocument: DIDDocument;
+  keyPair: KeyPair;
+  domain: string;
+  path?: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `did` | `string` | The agent's DID, e.g. `did:web:acme.com` |
+| `didDocument` | `DIDDocument` | The DID Document containing the public key |
+| `keyPair` | `KeyPair` | The cryptographic key pair |
+| `domain` | `string` | The domain |
+| `path` | `string \| undefined` | The sub-path, if any |
+
+---
+
+## Delegation
+
+### `DelegateOptions`
+
+Options for issuing a delegation credential from an owner to an agent.
+
+```typescript
+interface DelegateOptions {
+  agent: string;
+  owner: string;
+  ownerKeyPair: KeyPair;
+  scopes: string[];
+  constraints?: DelegationConstraints;
+  validFrom?: string;
+  validUntil?: string;
+  statusList?: { url: string; index: number };
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `agent` | `string` | Yes | DID of the agent receiving the delegation |
+| `owner` | `string` | Yes | DID of the owner granting it |
+| `ownerKeyPair` | `KeyPair` | Yes | Owner's signing key pair |
+| `scopes` | `string[]` | Yes | Permissions to grant (min 1) |
+| `constraints` | `DelegationConstraints` | No | Additional limits on the delegation |
+| `validFrom` | `string` | No | ISO 8601 start time |
+| `validUntil` | `string` | No | ISO 8601 expiration time |
+| `statusList` | `{ url: string; index: number }` | No | Status list entry for revocation support |
+
+### `DelegationCredential`
+
+The issued delegation credential, containing both the signed token and decoded claims.
+
+```typescript
+interface DelegationCredential {
+  token: string;
+  claims: DelegationClaims;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `token` | `string` | The signed SD-JWT VC token (send this to services) |
+| `claims` | `DelegationClaims` | The decoded claims for local use |
+
+### `DelegationClaims`
+
+The decoded payload of a delegation credential.
+
+```typescript
+interface DelegationClaims {
+  agent: string;
+  owner: string;
+  scopes: string[];
+  constraints?: DelegationConstraints;
+  validFrom?: string;
+  validUntil?: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `agent` | `string` | Agent DID |
+| `owner` | `string` | Owner DID |
+| `scopes` | `string[]` | Granted scopes |
+| `constraints` | `DelegationConstraints \| undefined` | Constraints, if set |
+| `validFrom` | `string \| undefined` | Start time |
+| `validUntil` | `string \| undefined` | Expiration time |
+
+### `DelegationConstraints`
+
+Optional limits on what a delegated agent can do.
+
+```typescript
+interface DelegationConstraints {
+  maxTransactionValue?: number;
+  validUntil?: string;
+  allowedDomains?: string[];
+  rateLimit?: number;
+  [key: string]: unknown;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `maxTransactionValue` | `number` | Maximum value per operation |
+| `validUntil` | `string` | ISO 8601 expiration |
+| `allowedDomains` | `string[]` | Permitted domains |
+| `rateLimit` | `number` | Max operations per time window |
+| `[key: string]` | `unknown` | Any custom constraint |
+
+### `DelegationResult`
+
+The return type of `verifyDelegation` --- a discriminated union on the `valid` field.
+
+```typescript
+type DelegationResult =
+  | {
+      valid: true;
+      agent: string;
+      owner: string;
+      scopes: string[];
+      constraints?: DelegationConstraints;
+      validFrom?: string;
+      validUntil?: string;
+      errors: [];
+    }
+  | {
+      valid: false;
+      agent?: string;
+      owner?: string;
+      scopes?: string[];
+      constraints?: DelegationConstraints;
+      validFrom?: string;
+      validUntil?: string;
+      errors: VerificationError[];
+    };
+```
+
+This is a **discriminated union**: the `valid` field determines which branch you're in. When `result.valid` is `true`, `agent`, `owner`, and `scopes` are guaranteed to be present and `errors` is always an empty array. When `result.valid` is `false`, those fields are optional (verification may have failed before parsing them) and `errors` contains at least one `VerificationError`.
+
+Always check `result.valid` first:
+
+```typescript
+const result = await verifyDelegation(token, options);
+
+if (result.valid) {
+  // TypeScript knows: agent, owner, scopes are strings/arrays (not undefined)
+  console.log(result.agent, result.scopes);
+} else {
+  // TypeScript knows: errors is VerificationError[] with at least one entry
+  for (const err of result.errors) {
+    console.log(err.code, err.message);
+  }
+}
+```
+
+---
+
+## Handshake
+
+### `ChallengeMessage`
+
+A challenge sent by a verifier to initiate the handshake.
+
+```typescript
+interface ChallengeMessage {
+  type: "credat:challenge";
+  nonce: string;
+  from: string;
+  timestamp: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `"credat:challenge"` | Message type literal |
+| `nonce` | `string` | Random challenge nonce |
+| `from` | `string` | DID of the verifier |
+| `timestamp` | `string` | ISO 8601 timestamp |
+
+### `PresentationMessage`
+
+The agent's response to a challenge, presenting its delegation credential.
+
+```typescript
+interface PresentationMessage {
+  type: "credat:presentation";
+  delegation: string;
+  nonce: string;
+  proof: string;
+  from: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `"credat:presentation"` | Message type literal |
+| `delegation` | `string` | The signed delegation token |
+| `nonce` | `string` | The nonce from the challenge |
+| `proof` | `string` | Signed proof binding the nonce to the agent |
+| `from` | `string` | DID of the presenting agent |
+
+### `AckMessage`
+
+Acknowledgement from the verifier after validating a presentation.
+
+```typescript
+interface AckMessage {
+  type: "credat:ack";
+  verified: boolean;
+  scopes?: string[];
+  counterChallenge?: ChallengeMessage;
+  delegation?: string;
+  proof?: string;
+  from?: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `"credat:ack"` | Message type literal |
+| `verified` | `boolean` | Whether the presentation was valid |
+| `scopes` | `string[] \| undefined` | Verified scopes (present if `verified` is `true`) |
+| `counterChallenge` | `ChallengeMessage \| undefined` | Optional counter-challenge for mutual auth |
+| `delegation` | `string \| undefined` | Verifier's delegation token (mutual auth) |
+| `proof` | `string \| undefined` | Verifier's proof (mutual auth) |
+| `from` | `string \| undefined` | DID of the verifier |
+
+### `HandshakeMessage`
+
+Union type of all handshake message types.
+
+```typescript
+type HandshakeMessage = ChallengeMessage | PresentationMessage | AckMessage;
+```
+
+Discriminate on the `type` field:
+
+```typescript
+function handle(msg: HandshakeMessage) {
+  switch (msg.type) {
+    case "credat:challenge":
+      // msg is ChallengeMessage
+      break;
+    case "credat:presentation":
+      // msg is PresentationMessage
+      break;
+    case "credat:ack":
+      // msg is AckMessage
+      break;
+  }
+}
+```
+
+---
+
+## DID
+
+### `DIDMethod`
+
+Supported DID methods.
+
+```typescript
+type DIDMethod = "key" | "web";
+```
+
+### `DIDDocument`
+
+A W3C DID Document.
+
+```typescript
+interface DIDDocument {
+  id: string;
+  verificationMethod?: VerificationMethod[];
+  authentication?: string[];
+  assertionMethod?: string[];
+  service?: ServiceEndpoint[];
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | The DID this document describes |
+| `verificationMethod` | `VerificationMethod[]` | Public keys and their metadata |
+| `authentication` | `string[]` | References to keys used for authentication |
+| `assertionMethod` | `string[]` | References to keys used for signing assertions |
+| `service` | `ServiceEndpoint[]` | Service endpoints associated with the DID |
+
+### `VerificationMethod`
+
+A public key entry within a DID Document.
+
+```typescript
+interface VerificationMethod {
+  id: string;
+  type: string;
+  controller: string;
+  publicKeyJwk?: JsonWebKey;
+  publicKeyMultibase?: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Key identifier (usually `did#key-1`) |
+| `type` | `string` | Key type (e.g. `JsonWebKey2020`, `Ed25519VerificationKey2020`) |
+| `controller` | `string` | DID that controls this key |
+| `publicKeyJwk` | `JsonWebKey \| undefined` | Public key in JWK format |
+| `publicKeyMultibase` | `string \| undefined` | Public key in multibase encoding |
+
+### `ServiceEndpoint`
+
+A service endpoint entry within a DID Document.
+
+```typescript
+interface ServiceEndpoint {
+  id: string;
+  type: string;
+  serviceEndpoint: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Endpoint identifier |
+| `type` | `string` | Service type (e.g. `CredatAgent`) |
+| `serviceEndpoint` | `string` | URL of the service |
+
+### `DIDResolutionResult`
+
+The result of resolving a DID, following the W3C DID Resolution specification.
+
+```typescript
+interface DIDResolutionResult {
+  didDocument: DIDDocument | null;
+  didResolutionMetadata: { error?: string };
+  didDocumentMetadata: Record<string, unknown>;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `didDocument` | `DIDDocument \| null` | The resolved document, or `null` on failure |
+| `didResolutionMetadata` | `{ error?: string }` | Resolution metadata (contains `error` on failure) |
+| `didDocumentMetadata` | `Record<string, unknown>` | Additional metadata about the document |
+
+---
+
+## Credential
+
+### `CredentialFormat`
+
+Supported credential formats.
+
+```typescript
+type CredentialFormat = "sd-jwt-vc";
+```
+
+Currently only SD-JWT VC is supported.
+
+### `CredentialClaimValue`
+
+Recursive type for credential claim values.
+
+```typescript
+type CredentialClaimValue =
+  | string
+  | number
+  | boolean
+  | null
+  | CredentialClaimValue[]
+  | { [key: string]: CredentialClaimValue };
+```
+
+### `CredentialClaims`
+
+A map of claim names to claim values.
+
+```typescript
+interface CredentialClaims {
+  [key: string]: CredentialClaimValue;
+}
+```
+
+### `VerificationError`
+
+An error returned inside verification result objects.
+
+```typescript
+interface VerificationError {
+  code: ErrorCode;
+  message: string;
+  humanMessage?: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `code` | `ErrorCode` | Machine-readable error code (e.g. `DELEGATION_EXPIRED`) |
+| `message` | `string` | Technical error message |
+| `humanMessage` | `string \| undefined` | Optional plain-language explanation |
+
+---
+
+## Status List
+
+### `StatusListData`
+
+Internal representation of a status list for credential revocation.
+
+```typescript
+interface StatusListData {
+  bitstring: Uint8Array;
+  issuer: string;
+  id: string;
+  size: number;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `bitstring` | `Uint8Array` | Compressed bitstring of revocation statuses |
+| `issuer` | `string` | DID of the status list issuer |
+| `id` | `string` | URL identifier of the status list |
+| `size` | `number` | Total number of entries |
+
+### `StatusListEntry`
+
+A reference to a specific index in a status list, embedded in credentials.
+
+```typescript
+interface StatusListEntry {
+  statusListUrl: string;
+  statusListIndex: number;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `statusListUrl` | `string` | URL of the status list |
+| `statusListIndex` | `number` | Index of the credential in the list |
+
+### `RevocationStatus`
+
+The revocation status of a credential.
+
+```typescript
+type RevocationStatus = "valid" | "revoked" | "unknown";
+```
+
+| Value | Meaning |
+|---|---|
+| `"valid"` | Credential is active |
+| `"revoked"` | Credential has been revoked by the issuer |
+| `"unknown"` | Status could not be determined (e.g. status list unreachable) |
+
+---
+
+## Crypto
+
+### `Algorithm`
+
+Supported signing algorithms.
+
+```typescript
+type Algorithm = "ES256" | "EdDSA";
+```
+
+| Value | Curve | Description |
+|---|---|---|
+| `"ES256"` | P-256 (NIST) | ECDSA with SHA-256 |
+| `"EdDSA"` | Ed25519 | Edwards-curve Digital Signature Algorithm |
+
+### `KeyPair`
+
+A cryptographic key pair used for signing and verification.
+
+```typescript
+interface KeyPair {
+  algorithm: Algorithm;
+  privateKey: Uint8Array;
+  publicKey: Uint8Array;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `algorithm` | `Algorithm` | The algorithm this key pair uses |
+| `privateKey` | `Uint8Array` | 32-byte private key |
+| `publicKey` | `Uint8Array` | Compressed public key (33 bytes for ES256, 32 bytes for EdDSA) |
+
+### `JsonWebKey`
+
+A JSON Web Key, used in DID Documents and key encoding helpers.
+
+```typescript
+interface JsonWebKey {
+  kty: string;
+  crv?: string;
+  x?: string;
+  y?: string;
+  d?: string;
+  kid?: string;
+  alg?: string;
+  use?: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `kty` | `string` | Key type (`"EC"` for ES256, `"OKP"` for EdDSA) |
+| `crv` | `string \| undefined` | Curve name (`"P-256"` or `"Ed25519"`) |
+| `x` | `string \| undefined` | Base64url-encoded x coordinate |
+| `y` | `string \| undefined` | Base64url-encoded y coordinate (EC keys only) |
+| `d` | `string \| undefined` | Base64url-encoded private key (only in private JWKs) |
+| `kid` | `string \| undefined` | Key ID |
+| `alg` | `string \| undefined` | Algorithm hint |
+| `use` | `string \| undefined` | Key usage (`"sig"` for signing) |
+
+---
+
+## Storage
+
+### `StorageAdapter`
+
+Interface for pluggable storage backends. Implement this to persist agent identities to any backing store.
+
+```typescript
+interface StorageAdapter {
+  get<T>(collection: string, key: string): Promise<T | null>;
+  set<T>(collection: string, key: string, value: T): Promise<void>;
+  delete(collection: string, key: string): Promise<void>;
+  list<T>(collection: string): Promise<T[]>;
+  clear(collection?: string): Promise<void>;
+}
+```
+
+| Method | Signature | Description |
+|---|---|---|
+| `get` | `get<T>(collection, key): Promise<T \| null>` | Retrieve a value by collection and key |
+| `set` | `set<T>(collection, key, value): Promise<void>` | Store a value |
+| `delete` | `delete(collection, key): Promise<void>` | Delete a value |
+| `list` | `list<T>(collection): Promise<T[]>` | List all values in a collection |
+| `clear` | `clear(collection?): Promise<void>` | Clear a collection, or all data if no collection is given |
+
+Credat ships with `MemoryStorage`, an in-memory implementation. See the [Agent API](/api/agent#memorystorage) for details.

@@ -56,7 +56,7 @@ function presentCredentials(options: PresentOptions): Promise<PresentationMessag
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `challenge` | `ChallengeMessage` | Yes | The challenge from the service |
-| `delegation` | `string` | Yes | The raw delegation token (`delegation.raw`) |
+| `delegation` | `string` | Yes | The raw delegation token (`delegation.token`) |
 | `agent` | `AgentIdentity` | Yes | The agent's full identity |
 
 ### Returns
@@ -78,7 +78,7 @@ import { presentCredentials } from "credat";
 
 const presentation = await presentCredentials({
   challenge,
-  delegation: delegation.raw,
+  delegation: delegation.token,
   agent: agentIdentity,
 });
 ```
@@ -110,6 +110,7 @@ function verifyPresentation(
 | `ownerPublicKey` | `Uint8Array` | Yes | --- | Owner's public key |
 | `agentPublicKey` | `Uint8Array` | Yes | --- | Agent's public key |
 | `agentAlgorithm` | `"ES256" \| "EdDSA"` | No | auto-detected | Agent's signing algorithm |
+| `challengeMaxAgeMs` | `number` | No | `300000` (5 min) | Maximum age of challenge before rejection |
 
 ### Returns
 

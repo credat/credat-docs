@@ -30,7 +30,7 @@ const delegation = await delegate({
 });
 ```
 
-The resulting credential (`delegation.raw`) is an SD-JWT VC --- a compact, signed token that the agent can present to any service.
+The resulting credential (`delegation.token`) is an SD-JWT VC --- a compact, signed token that the agent can present to any service.
 
 ## What's in a delegation?
 
@@ -50,7 +50,7 @@ Any service can verify a delegation with just the owner's public key:
 ```typescript
 import { verifyDelegation } from "credat";
 
-const result = await verifyDelegation(delegation.raw, {
+const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeys.publicKey,
 });
 
@@ -117,8 +117,7 @@ Delegations can be revoked using status lists:
 ```typescript
 const delegation = await delegate({
   // ...
-  statusListUrl: "https://acme.com/.well-known/status-list.json",
-  statusListIndex: 42,
+  statusList: { url: "https://acme.com/.well-known/status-list.json", index: 42 },
 });
 ```
 

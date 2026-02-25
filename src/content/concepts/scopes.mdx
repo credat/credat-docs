@@ -32,7 +32,7 @@ After verifying a delegation or presentation, use the scope helpers:
 ```typescript
 import { hasScope, hasAnyScope, hasAllScopes, getAllScopes } from "credat";
 
-const result = await verifyDelegation(delegation.raw, {
+const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeys.publicKey,
 });
 
@@ -116,7 +116,7 @@ const delegation = await delegate({
 After verification, constraints are available on the result:
 
 ```typescript
-const result = await verifyDelegation(delegation.raw, { ownerPublicKey });
+const result = await verifyDelegation(delegation.token, { ownerPublicKey });
 
 if (result.valid && result.constraints) {
   if (result.constraints.maxTransactionValue &&

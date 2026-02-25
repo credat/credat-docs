@@ -69,7 +69,7 @@ const challengeFromB = createChallenge({
 // Agent A responds with its credentials
 const presentationA = await presentCredentials({
   challenge: challengeFromB,
-  delegation: delegationA.raw,
+  delegation: delegationA.token,
   agent: agentA,
 });
 
@@ -100,7 +100,7 @@ const challengeFromA = createChallenge({
 // Agent B responds with its credentials
 const presentationB = await presentCredentials({
   challenge: challengeFromA,
-  delegation: delegationB.raw,
+  delegation: delegationB.token,
   agent: agentB,
 });
 

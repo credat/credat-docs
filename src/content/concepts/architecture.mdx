@@ -1,0 +1,103 @@
+# Architecture Overview
+
+Credat is a trust layer for AI agents. It gives agents verifiable identity via DIDs (Decentralized Identifiers), scoped permissions via delegation credentials, and a cryptographic verification protocol called the trust handshake. Together, these let any service answer three questions about an incoming agent: *who is it*, *what can it do*, and *can it prove it*.
+
+## The three pillars
+
+Credat is built on three interlocking concepts. Each solves one part of the agent trust problem.
+
+### Identity
+
+Every agent gets a **DID** (Decentralized Identifier) --- a globally unique, cryptographically verifiable identifier.
+
+| DID Method | How it works | Best for |
+|---|---|---|
+| `did:web` | DID Document hosted on your domain via HTTPS | Production agents that need external resolution |
+| `did:key` | Public key encoded directly in the DID string | Testing, ephemeral agents, offline use |
+
+The DID Document contains the agent's public key. Anyone who resolves the DID can verify signatures from that agent.
+
+### Authorization
+
+Owners issue **delegation credentials** (SD-JWT VCs) that bind an agent DID to specific scopes and constraints. A delegation says: *"I authorize agent X to do A, B, and C, under these limits, until this date."*
+
+Delegations are cryptographically signed by the owner's private key. They can't be forged, tampered with, or transferred to a different agent.
+
+### Verification
+
+The **trust handshake** is a 3-message challenge-response protocol that proves identity and permissions in real time:
+
+| Step | Message | Purpose |
+|---|---|---|
+| 1 | **Challenge** | Service sends a random nonce to the agent |
+| 2 | **Presentation** | Agent signs the nonce and presents its delegation credential |
+| 3 | **Verification** | Service verifies the nonce signature, agent identity, and delegation validity |
+
+The nonce prevents replay attacks --- each handshake is unique and cannot be reused.
+
+## How they connect --- the flow
+
+The full lifecycle from key generation to verified access:
+
+1. **Owner generates a key pair** (`generateKeyPair`) --- this becomes the trust anchor
+2. **Agent is created with a DID** (`createAgent`) --- the agent gets its own key pair and a resolvable identifier
+3. **Owner issues a delegation** (`delegate`) --- binds the agent's DID to specific scopes and constraints, signed by the owner
+4. **Agent connects to a service** --- the service sends a challenge containing a fresh nonce (`createChallenge`)
+5. **Agent presents credentials** (`presentCredentials`) --- includes the delegation credential and a signed proof over the nonce
+6. **Service verifies everything** (`verifyPresentation`) --- checks nonce match, agent signature, delegation signature, expiration, and scopes
+
+> After verification succeeds, the service knows *who* the agent is, *who authorized it*, and *what it's allowed to do*. What happens next (session creation, scope enforcement, rate limiting) is up to your application.
+
+For implementation details, see the [basic agent guide](/docs/guides/basic-agent) and the [handshake guide](/docs/guides/handshake).
+
+## Trust model
+
+### Trust anchors
+
+Trust starts with **owner public keys**. A service trusts an agent because it trusts the owner who signed the delegation. Services must know or obtain the owner's public key out-of-band (e.g., pre-configured, fetched via DID resolution).
+
+### Cryptographic chain
+
+The trust chain has two links:
+
+1. **Owner signs the delegation** --- proves the owner authorized this agent with these permissions
+2. **Agent signs the presentation** --- proves the agent holds the private key matching its DID
+
+The service verifies both signatures. If either is invalid, the handshake fails.
+
+### No central authority
+
+Credat does not depend on a central identity provider, certificate authority, or token issuer. Trust is peer-to-peer:
+
+- `did:web` resolves via standard HTTPS to the owner's domain
+- `did:key` is entirely self-contained --- the public key is the identifier
+- Owner-agent-service relationships are established directly, not mediated by a third party
+
+## Protocol layers
+
+Credat's architecture is organized in five layers. Each layer builds on the one below it.
+
+| Layer | What it does | Components |
+|---|---|---|
+| **Application** | Your code | Scope enforcement, session management, constraint logic, business rules |
+| **Protocol** | Trust handshake | Challenge, presentation, verification (3-message exchange) |
+| **Credential** | SD-JWT VCs | Delegation issuance, selective disclosure, revocation via status lists |
+| **Identity** | DIDs | `did:web`, `did:key`, DID Documents, DID resolution |
+| **Crypto** | Primitives | Key pairs, signatures (ES256 / EdDSA), encoding (base64url, JWK) |
+
+> Credat handles the bottom four layers. The application layer is yours --- Credat gives you verified identity, scopes, and constraints; you decide what to do with them.
+
+## What Credat does vs. what you handle
+
+| Credat handles | You handle |
+|---|---|
+| Agent identity (DID creation, resolution) | DID Document hosting (serving the JSON at the well-known URL) |
+| Delegation issuance and verification | Constraint enforcement logic (business rules) |
+| Cryptographic handshake protocol | Transport (HTTP, WebSocket, gRPC, message queues) |
+| Nonce generation and validation | Nonce storage (Redis, database, in-memory) |
+| Scope checking helpers (`hasScope`, `hasAllScopes`) | Session management after successful verification |
+| Key generation and signing | Key storage and rotation (file system, KMS, HSM) |
+
+This separation is intentional. Credat is a trust *protocol*, not a framework. It handles cryptographic correctness so you can focus on application logic.
+
+For API details, see the [agent API](/docs/api/agent), [delegation API](/docs/api/delegation), and [handshake API](/docs/api/handshake).

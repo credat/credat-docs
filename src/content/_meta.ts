@@ -4,5 +4,6 @@ export default {
   concepts: "Concepts",
   guides: "Guides",
   security: "Security Considerations",
+  troubleshooting: "Troubleshooting",
   api: "API Reference",
 };

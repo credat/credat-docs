@@ -53,7 +53,7 @@ import { presentCredentials } from "credat";
 
 const presentation = await presentCredentials({
   challenge,
-  delegation: delegation.raw,
+  delegation: delegation.token,
   agent: agentIdentity,
 });
 // {

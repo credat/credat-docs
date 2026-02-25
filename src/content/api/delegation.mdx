@@ -21,8 +21,7 @@ function delegate(options: DelegateOptions): Promise<DelegationCredential>
 | `constraints` | `DelegationConstraints` | No | --- | Additional limits |
 | `validFrom` | `string` | No | --- | ISO 8601 start time |
 | `validUntil` | `string` | No | --- | ISO 8601 expiration time |
-| `statusListUrl` | `string` | No | --- | URL of the status list for revocation |
-| `statusListIndex` | `number` | No | --- | Index in the status list |
+| `statusList` | `{ url: string; index: number }` | No | --- | Status list entry for revocation |
 
 #### `DelegationConstraints`
 
@@ -40,7 +39,7 @@ function delegate(options: DelegateOptions): Promise<DelegationCredential>
 
 | Field | Type | Description |
 |---|---|---|
-| `raw` | `string` | The signed SD-JWT VC token (send this to services) |
+| `token` | `string` | The signed SD-JWT VC token (send this to services) |
 | `claims` | `DelegationClaims` | The decoded claims for local use |
 
 #### `DelegationClaims`
@@ -96,15 +95,13 @@ function verifyDelegation(
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `token` | `string` | Yes | The raw SD-JWT VC token from `delegation.raw` |
+| `token` | `string` | Yes | The raw SD-JWT VC token from `delegation.token` |
 
 #### `VerifyDelegationOptions`
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ownerPublicKey` | `Uint8Array` | Yes | --- | The owner's public key |
-| `algorithm` | `string` | No | --- | Signing algorithm (inferred if not set) |
-| `checkRevocation` | `boolean` | No | `false` | Whether to check revocation status |
 
 ### Returns
 
@@ -126,7 +123,7 @@ function verifyDelegation(
 ```typescript
 import { verifyDelegation } from "credat";
 
-const result = await verifyDelegation(delegation.raw, {
+const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeys.publicKey,
 });
 
