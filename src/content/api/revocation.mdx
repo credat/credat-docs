@@ -314,6 +314,79 @@ if (result.valid) {
 
 ---
 
+## Status list storage
+
+Helper functions for persisting status lists via a `StorageAdapter`. Useful for production deployments where you need to persist status lists across restarts.
+
+### `saveStatusList`
+
+```typescript
+function saveStatusList(storage: StorageAdapter, list: StatusListData): Promise<void>
+```
+
+Saves a status list to the storage adapter. Uses `list.id` as the storage key.
+
+### `loadStatusList`
+
+```typescript
+function loadStatusList(storage: StorageAdapter, id: string): Promise<StatusListData | null>
+```
+
+Loads a status list by ID. Returns `null` if not found.
+
+### `deleteStatusList`
+
+```typescript
+function deleteStatusList(storage: StorageAdapter, id: string): Promise<boolean>
+```
+
+Deletes a status list from storage.
+
+### `listStatusLists`
+
+```typescript
+function listStatusLists(storage: StorageAdapter): Promise<StatusListData[]>
+```
+
+Returns all stored status lists.
+
+### Example
+
+```typescript
+import {
+  createStatusList,
+  setRevocationStatus,
+  saveStatusList,
+  loadStatusList,
+  listStatusLists,
+  MemoryStorage,
+} from "credat";
+
+const storage = new MemoryStorage();
+
+// Create and persist
+const statusList = createStatusList({
+  id: "prod-list-1",
+  issuer: "did:web:acme.com",
+  url: "https://acme.com/.well-known/status/1",
+});
+
+await saveStatusList(storage, statusList);
+
+// Later: load, revoke, save
+const loaded = await loadStatusList(storage, "prod-list-1");
+if (loaded) {
+  setRevocationStatus(loaded, 42, true);
+  await saveStatusList(storage, loaded);
+}
+
+// List all status lists
+const all = await listStatusLists(storage);
+console.log(`${all.length} status list(s) in storage`);
+```
+
+---
+
 ## Related guides
 
 - [Credential revocation guide](/docs/guides/revocation) — End-to-end walkthrough: create, host, revoke, and check status lists

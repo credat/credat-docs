@@ -84,6 +84,69 @@ const scopes = getAllScopes(result);
 
 ---
 
+## `validateConstraints`
+
+Validates delegation constraints against a request context. Returns an array of violations --- empty if all constraints pass.
+
+```typescript
+function validateConstraints(
+  constraints: DelegationConstraints | undefined,
+  context: ConstraintContext,
+): ConstraintViolation[]
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `constraints` | `DelegationConstraints \| undefined` | Yes | Constraints from the verified delegation |
+| `context` | `ConstraintContext` | Yes | The current request context to validate against |
+
+#### `ConstraintContext`
+
+| Field | Type | Description |
+|---|---|---|
+| `transactionValue` | `number \| undefined` | The transaction value to check against `maxTransactionValue` |
+| `domain` | `string \| undefined` | The target domain to check against `allowedDomains` |
+| `rateLimit` | `number \| undefined` | Current rate count to check against `rateLimit` |
+| `[key: string]` | `unknown` | Custom context fields for custom constraints |
+
+#### `ConstraintViolation`
+
+| Field | Type | Description |
+|---|---|---|
+| `constraint` | `string` | Name of the violated constraint |
+| `message` | `string` | Human-readable violation description |
+
+### Example
+
+```typescript
+import { verifyDelegation, validateConstraints } from "credat";
+
+const result = await verifyDelegation(token, { ownerPublicKey });
+
+if (result.valid) {
+  const violations = validateConstraints(result.constraints, {
+    transactionValue: 5000,
+    domain: "api.stripe.com",
+  });
+
+  if (violations.length > 0) {
+    console.error("Constraint violations:", violations);
+    // [{ constraint: "maxTransactionValue", message: "5000 exceeds max 1000" }]
+  }
+}
+```
+
+### Notes
+
+- Returns an empty array if `constraints` is `undefined` (no constraints = no violations)
+- Only checks built-in constraints (`maxTransactionValue`, `allowedDomains`, `rateLimit`) against matching context fields
+- Skips checks where the context field is not provided (e.g., no `domain` in context = skip `allowedDomains` check)
+- For custom constraints, use the [manual approach](/docs/guides/constraints#custom-constraints)
+
+---
+
 ## Usage pattern
 
 A typical scope check in an API handler:

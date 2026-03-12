@@ -1,0 +1,151 @@
+# CLI Reference
+
+The Credat CLI lets you create agent identities, issue delegation credentials, and verify trust
+chains from the terminal — no code required.
+
+## Installation
+
+```bash
+npm install -g @credat/cli
+```
+
+Requires Node.js 22+.
+
+## Quick start
+
+```bash
+# 1. Create an agent identity
+credat init --domain acme.corp
+
+# 2. Delegate scopes to the agent
+credat delegate --scopes payments:read,invoices:create --until 2026-12-31
+
+# 3. Verify the delegation
+credat verify
+
+# 4. Check current state
+credat status
+```
+
+---
+
+## Commands
+
+### `credat init`
+
+Create an agent identity with `did:web`. Generates a key pair, DID, and DID Document, then saves
+them to `.credat/` in the current directory.
+
+```bash
+credat init --domain acme.corp
+credat init --domain acme.corp --path agents/assistant
+credat init --domain acme.corp --algorithm EdDSA
+credat init --domain acme.corp --force  # overwrite existing
+```
+
+| Option | Description |
+|--------|-------------|
+| `-d, --domain <domain>` | Domain for `did:web` (required) |
+| `-p, --path <path>` | Optional sub-path for the DID |
+| `-a, --algorithm <alg>` | `ES256` (default) or `EdDSA` |
+| `-f, --force` | Overwrite existing agent identity |
+
+**Output:** Creates `.credat/agent.json` with the agent identity and `.credat/owner.json` with the
+owner key pair.
+
+---
+
+### `credat delegate`
+
+Issue a delegation credential from the owner to the agent.
+
+```bash
+credat delegate --scopes payments:read,invoices:create
+credat delegate --scopes payments:read --max-value 1000 --until 2026-12-31
+credat delegate --agent did:web:other.agent --scopes admin:read
+```
+
+| Option | Description |
+|--------|-------------|
+| `-a, --agent <did>` | Agent DID (defaults to `.credat/agent.json`) |
+| `-s, --scopes <scopes>` | Comma-separated scopes (required) |
+| `-m, --max-value <n>` | `maxTransactionValue` constraint |
+| `-u, --until <date>` | Expiration date (ISO 8601) |
+
+**Output:** Saves the signed delegation token to `.credat/delegation.json`.
+
+---
+
+### `credat verify [token]`
+
+Verify a delegation token's signature, expiration, and scopes. If no token is provided, reads
+from `.credat/delegation.json`.
+
+```bash
+credat verify
+credat verify eyJhbGciOiJFUzI1NiIs...
+```
+
+Prints the verified agent DID, owner DID, scopes, constraints, and validity window.
+
+---
+
+### `credat status`
+
+Show the current `.credat/` state: agent identity, owner key, and delegation info.
+
+```bash
+credat status
+credat --json status  # structured JSON output
+```
+
+---
+
+### `credat demo`
+
+Run a full interactive trust flow demo. Creates identities, delegates scopes, verifies the
+delegation, and completes a challenge-response handshake — all in one command.
+
+```bash
+credat demo
+```
+
+This is the fastest way to see Credat in action without writing any code.
+
+---
+
+## Global options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output structured JSON (works with `status`, `verify`, `delegate`) |
+| `-V, --version` | Show CLI and SDK versions |
+| `-h, --help` | Show help |
+
+## The `.credat/` directory
+
+The CLI stores all state in a `.credat/` directory in your current working directory:
+
+| File | Contents |
+|------|----------|
+| `agent.json` | Agent identity (DID, key pair, DID Document) |
+| `owner.json` | Owner key pair |
+| `delegation.json` | The signed delegation token |
+
+> **Security:** The `.credat/` directory contains private keys. Add it to `.gitignore` and
+> never commit it to version control.
+
+## Relationship to the SDK
+
+The CLI is a thin wrapper around the [Credat SDK](/docs/api/agent). Every CLI command maps to
+SDK functions:
+
+| CLI command | SDK function |
+|-------------|-------------|
+| `credat init` | [`createAgent()`](/docs/api/agent#createagent) |
+| `credat delegate` | [`delegate()`](/docs/api/delegation#delegate) |
+| `credat verify` | [`verifyDelegation()`](/docs/api/delegation#verifydelegation) |
+| `credat demo` | Full handshake flow using [`createChallenge()`](/docs/api/handshake), [`presentCredentials()`](/docs/api/handshake#presentcredentials), [`verifyPresentation()`](/docs/api/handshake#verifypresentation) |
+
+For programmatic usage, use the SDK directly. The CLI is best for prototyping, demos, and quick
+verification tasks.

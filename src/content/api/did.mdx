@@ -110,10 +110,18 @@ didWebToUrl("did:web:acme.com:agents:bot-1");
 Resolves a `did:web` by fetching its DID Document over HTTPS.
 
 ```typescript
-function resolveDidWeb(did: string): Promise<DIDResolutionResult>
+function resolveDidWeb(
+  did: string,
+  options?: { timeout?: number },
+): Promise<DIDResolutionResult>
 ```
 
-Returns `{ didDocument: null, didResolutionMetadata: { error: "notFound" } }` on HTTP errors or network failures.
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `did` | `string` | Yes | --- | A `did:web` identifier |
+| `options.timeout` | `number` | No | `10000` | HTTP request timeout in milliseconds |
+
+Returns `{ didDocument: null, didResolutionMetadata: { error: "notFound" } }` on HTTP errors, timeouts, or network failures.
 
 ---
 

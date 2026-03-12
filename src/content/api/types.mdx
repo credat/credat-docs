@@ -380,6 +380,54 @@ interface DIDResolutionResult {
 
 ---
 
+## Scopes & Constraints
+
+### `HasScopes`
+
+Interface accepted by all scope helper functions. Any object with a `scopes` array satisfies it, including `DelegationResult`.
+
+```typescript
+interface HasScopes {
+  scopes: string[];
+}
+```
+
+### `ConstraintContext`
+
+Request context passed to `validateConstraints` for checking delegation constraints.
+
+```typescript
+interface ConstraintContext {
+  transactionValue?: number;
+  domain?: string;
+  [key: string]: unknown;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `transactionValue` | `number \| undefined` | Value to check against `maxTransactionValue` |
+| `domain` | `string \| undefined` | Domain to check against `allowedDomains` |
+| `[key: string]` | `unknown` | Custom context fields |
+
+### `ConstraintViolation`
+
+A single constraint violation returned by `validateConstraints`.
+
+```typescript
+interface ConstraintViolation {
+  constraint: string;
+  message: string;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `constraint` | `string` | Name of the violated constraint (e.g. `"maxTransactionValue"`) |
+| `message` | `string` | Human-readable description |
+
+---
+
 ## Credential
 
 ### `CredentialFormat`
