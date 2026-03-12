@@ -29,7 +29,7 @@ const agent = await createAgent({ domain: "acme.com", algorithm: "ES256" });
 const delegation = await delegate({
   agent: agent.did,
   owner: "did:web:acme.com",
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["email:read", "calendar:write"],
   constraints: { allowedDomains: ["google.com"] },
 });
@@ -47,7 +47,7 @@ const presentation = await presentCredentials({
 // 5. Service verifies everything
 const result = await verifyPresentation(presentation, {
   challenge,
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
   agentPublicKey: agent.keyPair.publicKey,
 });
 

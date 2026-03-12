@@ -1,0 +1,235 @@
+# Credential Revocation with Status Lists
+
+This guide walks through the complete revocation workflow: creating a status list, issuing
+revocable delegations, hosting the status list, revoking credentials, and checking revocation
+before granting access.
+
+## How it works
+
+Credat uses [W3C Status List 2021](https://www.w3.org/TR/2023/WD-vc-status-list-20230427/) —
+a compact bitstring where each bit represents a credential. Flip a bit to revoke it.
+
+```
+Status list bitstring (each position = one credential):
+
+Index:   0  1  2  3  4  5  6  7  ...  42  ...  131071
+Value:   0  0  0  0  0  0  0  0  ...   1  ...       0
+                                        ^
+                                     revoked
+```
+
+The status list is published as a signed JWT at a public URL. Verifiers fetch it to check
+whether a credential has been revoked.
+
+## Step 1: Create a status list
+
+```typescript
+import { createStatusList, generateKeyPair } from "credat";
+
+const ownerKeyPair = generateKeyPair("ES256");
+const ownerDid = "did:web:acme.com";
+const statusListUrl = "https://acme.com/.well-known/status/1";
+
+const statusList = createStatusList({
+  id: "status-list-1",
+  issuer: ownerDid,
+  url: statusListUrl,
+});
+
+// statusList.size → 131072 (W3C minimum for herd privacy)
+// statusList.bitstring → Uint8Array (all zeros = nothing revoked)
+```
+
+The minimum size of 131,072 entries is required by the W3C spec to prevent correlation attacks
+(an observer can't tell how many credentials exist by looking at the list size).
+
+## Step 2: Issue a delegation with a status list entry
+
+Assign each delegation a unique index in the status list:
+
+```typescript
+import { delegate } from "credat";
+
+let nextIndex = 0;
+
+async function issueDelegation(agentDid: string, scopes: string[]) {
+  const index = nextIndex++;
+
+  const delegation = await delegate({
+    agent: agentDid,
+    owner: ownerDid,
+    ownerKeyPair,
+    scopes,
+    statusList: { url: statusListUrl, index },
+  });
+
+  // Store the mapping: index → agent DID (for your own records)
+  console.log(`Issued delegation to ${agentDid} at index ${index}`);
+
+  return { delegation, index };
+}
+
+// Issue some delegations
+const bot1 = await issueDelegation("did:web:acme.com:agents:bot-1", ["api:read"]);
+const bot2 = await issueDelegation("did:web:acme.com:agents:bot-2", ["api:read", "api:write"]);
+```
+
+## Step 3: Host the status list credential
+
+The status list must be published as a signed JWT at the URL you specified. Here's an Express example:
+
+```typescript
+import { createStatusListCredential } from "credat";
+import express from "express";
+
+const app = express();
+
+// In-memory status list (in production, persist to a database)
+let currentJwt = createStatusListCredential({
+  list: statusList,
+  issuerPrivateKey: ownerKeyPair.privateKey,
+  url: statusListUrl,
+  algorithm: "ES256",
+});
+
+// Serve the status list credential
+app.get("/.well-known/status/1", (req, res) => {
+  res.set("Content-Type", "application/statuslist+jwt");
+  res.set("Cache-Control", "public, max-age=300"); // Cache for 5 minutes
+  res.send(currentJwt);
+});
+
+app.listen(3000);
+```
+
+## Step 4: Revoke a credential
+
+When you need to revoke a delegation, flip the bit and republish:
+
+```typescript
+import { setRevocationStatus, createStatusListCredential } from "credat";
+
+function revoke(index: number) {
+  // 1. Flip the bit
+  setRevocationStatus(statusList, index, true);
+
+  // 2. Re-sign and republish
+  currentJwt = createStatusListCredential({
+    list: statusList,
+    issuerPrivateKey: ownerKeyPair.privateKey,
+    url: statusListUrl,
+    algorithm: "ES256",
+  });
+
+  console.log(`Revoked credential at index ${index}`);
+}
+
+// Revoke bot2's delegation
+revoke(bot2.index);
+```
+
+You can also un-revoke by passing `false`:
+
+```typescript
+// Reinstate a credential
+setRevocationStatus(statusList, bot2.index, false);
+```
+
+## Step 5: Check revocation before granting access
+
+On the verifier side, after verifying the delegation, fetch the status list and check the index:
+
+```typescript
+import {
+  verifyDelegation,
+  verifyStatusListCredential,
+  isRevoked,
+} from "credat";
+
+async function verifyWithRevocationCheck(
+  token: string,
+  ownerPublicKey: Uint8Array,
+): Promise<{ valid: boolean; reason?: string }> {
+  // 1. Verify the delegation signature and claims
+  const result = await verifyDelegation(token, { ownerPublicKey });
+  if (!result.valid) {
+    return { valid: false, reason: result.errors[0].message };
+  }
+
+  // 2. Extract status list info from the token
+  //    (the SDK embeds it as status.status_list in the JWT payload)
+  const payload = JSON.parse(
+    atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+  );
+  const statusRef = payload.status?.status_list;
+
+  if (!statusRef) {
+    // No status list entry — credential is not revocable
+    return { valid: true };
+  }
+
+  // 3. Fetch the status list credential from the issuer
+  const response = await fetch(statusRef.uri);
+  const statusJwt = await response.text();
+
+  // 4. Verify the status list credential
+  const statusResult = verifyStatusListCredential(statusJwt, ownerPublicKey);
+  if (!statusResult.valid) {
+    return { valid: false, reason: "Could not verify status list" };
+  }
+
+  // 5. Check if this specific credential is revoked
+  const statusListData = {
+    bitstring: statusResult.bitstring!,
+    issuer: statusResult.issuer!,
+    id: statusRef.uri,
+    size: statusResult.bitstring!.length * 8,
+  };
+
+  if (isRevoked(statusListData, statusRef.idx)) {
+    return { valid: false, reason: "Credential has been revoked" };
+  }
+
+  return { valid: true };
+}
+```
+
+## Step 6: Update the hosted status list
+
+Every time you revoke or reinstate a credential, you need to re-sign and republish the JWT.
+Here's a helper that wraps the full cycle:
+
+```typescript
+function updateStatusList(
+  statusList: StatusListData,
+  ownerKeyPair: KeyPair,
+  url: string,
+) {
+  return createStatusListCredential({
+    list: statusList,
+    issuerPrivateKey: ownerKeyPair.privateKey,
+    url,
+    algorithm: ownerKeyPair.algorithm,
+  });
+}
+
+// After any revocation change:
+currentJwt = updateStatusList(statusList, ownerKeyPair, statusListUrl);
+```
+
+## Scaling considerations
+
+| Concern | Approach |
+|---------|----------|
+| **List size** | The default 131,072 entries covers most use cases. If you need more, create additional lists with different URLs. |
+| **Caching** | Set `Cache-Control` headers on the status list endpoint. 5–15 minutes is a good balance between freshness and load. |
+| **Multiple lists** | Use separate status lists for different credential types or departments. Each list has its own URL and index space. |
+| **Persistence** | Persist `StatusListData` to a database. The bitstring is a `Uint8Array` — store it as a binary blob. |
+| **Index allocation** | Track the next available index in your database. Never reuse an index — if a credential is un-revoked and re-revoked, it should keep its original index. |
+| **Latency** | Verifiers fetch the status list over HTTP. Keep the endpoint fast and consider a CDN for global distribution. |
+
+## Next steps
+
+- [Revocation API reference](/docs/api/revocation) — Full function signatures for all status list operations
+- [Enforce constraints](/docs/guides/constraints) — Complement revocation with runtime constraint checks
+- [Types reference](/docs/api/types) — `StatusListData`, `StatusListEntry`, and related types

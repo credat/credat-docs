@@ -238,7 +238,7 @@ function createStatusListCredential(
 ```typescript
 import { createStatusList, setRevocationStatus, createStatusListCredential, generateKeyPair } from "credat";
 
-const ownerKeys = generateKeyPair("ES256");
+const ownerKeyPair = generateKeyPair("ES256");
 
 const statusList = createStatusList({
   id: "status-list-1",
@@ -252,7 +252,7 @@ setRevocationStatus(statusList, 42, true);
 // Publish the status list as a signed JWT
 const jwt = createStatusListCredential({
   list: statusList,
-  issuerPrivateKey: ownerKeys.privateKey,
+  issuerPrivateKey: ownerKeyPair.privateKey,
   url: "https://acme.com/.well-known/status/1",
 });
 
@@ -295,10 +295,10 @@ function verifyStatusListCredential(
 ```typescript
 import { verifyStatusListCredential, isRevoked, generateKeyPair } from "credat";
 
-const ownerKeys = generateKeyPair("ES256");
+const ownerKeyPair = generateKeyPair("ES256");
 
 // jwt was created with createStatusListCredential
-const result = verifyStatusListCredential(jwt, ownerKeys.publicKey);
+const result = verifyStatusListCredential(jwt, ownerKeyPair.publicKey);
 
 if (result.valid) {
   // Check if a specific credential is revoked
@@ -311,3 +311,10 @@ if (result.valid) {
   console.error("Invalid status list:", result.errors);
 }
 ```
+
+---
+
+## Related guides
+
+- [Credential revocation guide](/docs/guides/revocation) — End-to-end walkthrough: create, host, revoke, and check status lists
+- [Enforce delegation constraints](/docs/guides/constraints) — Complement revocation with runtime constraint checks

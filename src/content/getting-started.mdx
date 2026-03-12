@@ -24,19 +24,19 @@ console.log(agent.did);
 // "did:web:acme.com"
 
 // 2. Delegate permissions (in real usage, ownerKeyPair comes from your key management)
-const ownerKeys = await generateOwnerKeys(); // see below
+const ownerKeyPair = await generateOwnerKeys(); // see below
 
 const delegation = await delegate({
   agent: agent.did,
   owner: "did:web:acme.com",
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["files:read", "files:write"],
   validUntil: "2026-12-31T23:59:59Z",
 });
 
 // 3. Verify the delegation
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 
 console.log(result.valid);   // true
@@ -50,7 +50,7 @@ console.log(result.owner);   // "did:web:acme.com"
 ```typescript
 import { generateKeyPair } from "credat";
 
-const ownerKeys = generateKeyPair("ES256");
+const ownerKeyPair = generateKeyPair("ES256");
 // { algorithm: "ES256", publicKey: Uint8Array, privateKey: Uint8Array }
 ```
 

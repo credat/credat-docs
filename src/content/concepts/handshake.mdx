@@ -54,7 +54,7 @@ import { presentCredentials } from "credat";
 const presentation = await presentCredentials({
   challenge,
   delegation: delegation.token,
-  agent: agentIdentity,
+  agent,
 });
 // {
 //   type: "credat:presentation",
@@ -74,7 +74,7 @@ import { verifyPresentation } from "credat";
 
 const result = await verifyPresentation(presentation, {
   challenge,                           // The original challenge
-  ownerPublicKey: ownerKeys.publicKey, // Owner who issued the delegation
+  ownerPublicKey: ownerKeyPair.publicKey, // Owner who issued the delegation
   agentPublicKey: agent.keyPair.publicKey,
 });
 

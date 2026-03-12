@@ -58,12 +58,12 @@ function delegate(options: DelegateOptions): Promise<DelegationCredential>
 ```typescript
 import { delegate, generateKeyPair } from "credat";
 
-const ownerKeys = generateKeyPair("ES256");
+const ownerKeyPair = generateKeyPair("ES256");
 
 const delegation = await delegate({
   agent: "did:web:acme.com:agents:bot",
   owner: "did:web:acme.com",
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["files:read", "files:write"],
   constraints: {
     allowedDomains: ["storage.acme.com"],
@@ -124,7 +124,7 @@ function verifyDelegation(
 import { verifyDelegation } from "credat";
 
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 
 if (result.valid) {
@@ -141,3 +141,10 @@ if (result.valid) {
 | `DELEGATION_SIGNATURE_INVALID` | Token was not signed by the given public key |
 | `DELEGATION_EXPIRED` | Delegation has expired |
 | `DELEGATION_REVOKED` | Delegation was revoked via status list |
+
+---
+
+## Related guides
+
+- [Enforce delegation constraints](/docs/guides/constraints) — How to check `maxTransactionValue`, `allowedDomains`, `rateLimit`, and custom constraints
+- [Credential revocation](/docs/guides/revocation) — End-to-end revocation workflow with status lists

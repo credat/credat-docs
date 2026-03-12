@@ -44,7 +44,7 @@ The delegation's `validUntil` date is in the past. Issue a new delegation with a
 const delegation = await delegate({
   agent: agent.did,
   owner: ownerDid,
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["api:read"],
   validUntil: "2027-12-31T23:59:59Z", // Set a future date
 });
@@ -57,7 +57,7 @@ The SD-JWT VC signature doesn't match the owner's public key. The most common ca
 ```typescript
 // The ownerPublicKey must match the key pair used in delegate()
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey, // Must be the same owner
+  ownerPublicKey: ownerKeyPair.publicKey, // Must be the same owner
 });
 ```
 
@@ -81,7 +81,7 @@ Credat verifies the delegation signature but does **not** enforce constraints. Y
 
 ```typescript
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 
 if (result.valid) {
@@ -120,7 +120,7 @@ The agent's signature is invalid. Common causes:
 const result = await verifyPresentation(presentation, {
   challenge,
   agentPublicKey: agent.keyPair.publicKey, // Must match the signing agent
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 ```
 
@@ -132,7 +132,7 @@ Challenges have a timestamp. If your network round-trip takes longer than the co
 const result = await verifyPresentation(presentation, {
   challenge,
   agentPublicKey: agent.keyPair.publicKey,
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
   challengeMaxAgeMs: 10 * 60 * 1000, // 10 minutes instead of default 5
 });
 ```

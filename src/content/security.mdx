@@ -198,7 +198,7 @@ import { delegate, verifyDelegation } from "credat";
 const delegation = await delegate({
   agent: agent.did,
   owner: ownerDid,
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["api:read"],
   validFrom: "2026-03-01T00:00:00Z",  // Not valid before this
   validUntil: "2026-03-31T23:59:59Z",  // Not valid after this
@@ -208,7 +208,7 @@ const delegation = await delegate({
 // March 1--31:    result.valid === true
 // After March 31: result.valid === false, error code DELEGATION_EXPIRED
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 ```
 
@@ -234,7 +234,7 @@ For high-security operations, issue delegations with very short validity windows
 const shortLived = await delegate({
   agent: agent.did,
   owner: ownerDid,
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["payment:execute"],
   constraints: { maxTransactionValue: 100 },
   validUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
@@ -259,7 +259,7 @@ const statusList = createStatusList({
 const delegation = await delegate({
   agent: agent.did,
   owner: ownerDid,
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["api:admin"],
   validUntil: "2026-12-31T23:59:59Z",
   statusList: { url: "https://acme.com/.well-known/status-list.json", index: 0 },

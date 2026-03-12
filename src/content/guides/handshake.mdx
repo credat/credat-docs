@@ -17,7 +17,7 @@ import {
 } from "credat";
 
 // --- Owner setup ---
-const ownerKeys = generateKeyPair("ES256");
+const ownerKeyPair = generateKeyPair("ES256");
 const ownerDid = "did:web:acme.com";
 
 // --- Agent setup ---
@@ -31,7 +31,7 @@ const agent = await createAgent({
 const delegation = await delegate({
   agent: agent.did,
   owner: ownerDid,
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["api:read", "api:write"],
 });
 ```
@@ -68,7 +68,7 @@ const presentation = await presentCredentials({
 // --- Service side ---
 const result = await verifyPresentation(presentation, {
   challenge,                              // The original challenge we sent
-  ownerPublicKey: ownerKeys.publicKey,    // The owner's public key
+  ownerPublicKey: ownerKeyPair.publicKey,    // The owner's public key
   agentPublicKey: agent.keyPair.publicKey, // The agent's public key
 });
 

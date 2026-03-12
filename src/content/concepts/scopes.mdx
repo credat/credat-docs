@@ -33,7 +33,7 @@ After verifying a delegation or presentation, use the scope helpers:
 import { hasScope, hasAnyScope, hasAllScopes, getAllScopes } from "credat";
 
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 
 // Check for a single scope

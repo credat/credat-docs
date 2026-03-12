@@ -20,7 +20,7 @@ import { delegate } from "credat";
 const delegation = await delegate({
   agent: "did:web:acme.com:agent-1",
   owner: "did:web:acme.com",
-  ownerKeyPair: ownerKeys,
+  ownerKeyPair: ownerKeyPair,
   scopes: ["email:read", "email:send"],
   constraints: {
     allowedDomains: ["gmail.com"],
@@ -51,7 +51,7 @@ Any service can verify a delegation with just the owner's public key:
 import { verifyDelegation } from "credat";
 
 const result = await verifyDelegation(delegation.token, {
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
 });
 
 if (result.valid) {

@@ -79,7 +79,7 @@ import { presentCredentials } from "credat";
 const presentation = await presentCredentials({
   challenge,
   delegation: delegation.token,
-  agent: agentIdentity,
+  agent,
 });
 ```
 
@@ -137,7 +137,7 @@ import { verifyPresentation } from "credat";
 
 const result = await verifyPresentation(presentation, {
   challenge,
-  ownerPublicKey: ownerKeys.publicKey,
+  ownerPublicKey: ownerKeyPair.publicKey,
   agentPublicKey: agent.keyPair.publicKey,
 });
 

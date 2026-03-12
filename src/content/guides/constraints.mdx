@@ -1,0 +1,239 @@
+# Enforcing Delegation Constraints
+
+Credat stores constraints inside delegation credentials, but **enforcement is your responsibility**.
+The SDK embeds constraint data in the signed token — your service reads them after verification and
+decides whether to allow or deny the operation.
+
+## How constraints are stored
+
+When you issue a delegation with constraints, they're embedded as selectively-disclosable claims
+in the SD-JWT VC token:
+
+```typescript
+import { delegate, generateKeyPair } from "credat";
+
+const ownerKeyPair = generateKeyPair("ES256");
+
+const delegation = await delegate({
+  agent: "did:web:acme.com:agents:trading-bot",
+  owner: "did:web:acme.com",
+  ownerKeyPair,
+  scopes: ["trades:execute", "portfolio:read"],
+  constraints: {
+    maxTransactionValue: 10_000,
+    allowedDomains: ["api.exchange.com", "api.broker.com"],
+    rateLimit: 50,
+  },
+});
+
+console.log(delegation.claims.constraints);
+// {
+//   maxTransactionValue: 10000,
+//   allowedDomains: ["api.exchange.com", "api.broker.com"],
+//   rateLimit: 50,
+// }
+```
+
+The constraints travel with the credential — any verifier that receives the token can see what
+limits the owner imposed.
+
+## Extracting constraints after verification
+
+After verifying a delegation, constraints are available on the result:
+
+```typescript
+import { verifyDelegation } from "credat";
+
+const result = await verifyDelegation(delegation.token, {
+  ownerPublicKey: ownerKeyPair.publicKey,
+});
+
+if (!result.valid) {
+  throw new Error(`Verification failed: ${result.errors[0].message}`);
+}
+
+// Constraints may be undefined if the owner didn't set any
+const constraints = result.constraints ?? {};
+```
+
+## Implementing constraint checks
+
+### `maxTransactionValue`
+
+Reject operations that exceed the delegated budget:
+
+```typescript
+function checkTransactionValue(
+  constraints: Record<string, unknown>,
+  amount: number,
+): void {
+  const max = constraints.maxTransactionValue as number | undefined;
+  if (max !== undefined && amount > max) {
+    throw new Error(
+      `Transaction value ${amount} exceeds maximum ${max}`,
+    );
+  }
+}
+
+// Usage
+checkTransactionValue(constraints, order.totalAmount);
+```
+
+### `allowedDomains`
+
+Restrict which domains the agent can interact with:
+
+```typescript
+function checkAllowedDomain(
+  constraints: Record<string, unknown>,
+  targetDomain: string,
+): void {
+  const allowed = constraints.allowedDomains as string[] | undefined;
+  if (allowed && !allowed.includes(targetDomain)) {
+    throw new Error(
+      `Domain "${targetDomain}" not in allowed list: ${allowed.join(", ")}`,
+    );
+  }
+}
+
+// Usage
+const url = new URL(request.url);
+checkAllowedDomain(constraints, url.hostname);
+```
+
+### `rateLimit` with a sliding window
+
+The SDK stores the limit — you track the count:
+
+```typescript
+// Simple in-memory sliding window (use Redis in production)
+const windows = new Map<string, { count: number; resetAt: number }>();
+
+const WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function checkRateLimit(
+  constraints: Record<string, unknown>,
+  agentDid: string,
+): void {
+  const limit = constraints.rateLimit as number | undefined;
+  if (limit === undefined) return;
+
+  const now = Date.now();
+  const window = windows.get(agentDid);
+
+  if (!window || now > window.resetAt) {
+    windows.set(agentDid, { count: 1, resetAt: now + WINDOW_MS });
+    return;
+  }
+
+  if (window.count >= limit) {
+    const retryAfter = Math.ceil((window.resetAt - now) / 1000);
+    throw new Error(
+      `Rate limit exceeded (${limit}/window). Retry after ${retryAfter}s`,
+    );
+  }
+
+  window.count++;
+}
+
+// Usage
+checkRateLimit(constraints, result.agent);
+```
+
+## Custom constraints
+
+The `DelegationConstraints` type has an index signature (`[key: string]: unknown`), so you can
+add domain-specific constraints:
+
+```typescript
+const delegation = await delegate({
+  agent: agent.did,
+  owner: "did:web:acme.com",
+  ownerKeyPair,
+  scopes: ["data:query"],
+  constraints: {
+    "custom:maxRows": 1000,
+    "custom:allowedTables": ["users", "orders"],
+    "custom:readOnly": true,
+  },
+});
+```
+
+Enforce them the same way:
+
+```typescript
+function checkCustomConstraints(
+  constraints: Record<string, unknown>,
+  query: { table: string; rowLimit: number; isWrite: boolean },
+): void {
+  const maxRows = constraints["custom:maxRows"] as number | undefined;
+  if (maxRows !== undefined && query.rowLimit > maxRows) {
+    throw new Error(`Row limit ${query.rowLimit} exceeds max ${maxRows}`);
+  }
+
+  const allowedTables = constraints["custom:allowedTables"] as string[] | undefined;
+  if (allowedTables && !allowedTables.includes(query.table)) {
+    throw new Error(`Table "${query.table}" not allowed`);
+  }
+
+  const readOnly = constraints["custom:readOnly"] as boolean | undefined;
+  if (readOnly && query.isWrite) {
+    throw new Error("Write operations not permitted");
+  }
+}
+```
+
+## Putting it all together
+
+A middleware that verifies the delegation and enforces all constraints before handling the request:
+
+```typescript
+import { verifyDelegation, hasScope } from "credat";
+
+async function enforceConstraints(req, res, next) {
+  const result = await verifyDelegation(req.delegationToken, {
+    ownerPublicKey: req.ownerPublicKey,
+  });
+
+  if (!result.valid) {
+    return res.status(401).json({ error: "Invalid delegation", details: result.errors });
+  }
+
+  // 1. Check scopes
+  if (!hasScope(result, req.requiredScope)) {
+    return res.status(403).json({ error: `Missing scope: ${req.requiredScope}` });
+  }
+
+  // 2. Enforce constraints (fail-closed: reject if check throws)
+  const constraints = result.constraints ?? {};
+
+  try {
+    checkTransactionValue(constraints, req.body?.amount ?? 0);
+    checkAllowedDomain(constraints, req.hostname);
+    checkRateLimit(constraints, result.agent);
+  } catch (err) {
+    return res.status(403).json({ error: "Constraint violated", detail: err.message });
+  }
+
+  // 3. Attach verified info
+  req.agent = result;
+  next();
+}
+```
+
+## Best practices
+
+| Practice | Why |
+|----------|-----|
+| **Fail closed** | If a constraint check throws or the field is malformed, deny the request. Never skip checks on error. |
+| **Log violations** | Record every constraint violation with the agent DID, constraint name, attempted value, and timestamp. You'll need this for auditing. |
+| **Check before acting** | Enforce constraints before executing the operation, not after. A failed check after a trade executes doesn't help. |
+| **Use custom prefixes** | Namespace custom constraints with a prefix like `custom:` or your domain to avoid collisions with future SDK fields. |
+| **Store rate-limit state externally** | In-memory counters reset on restart. Use Redis or a database for production rate limiting. |
+| **Combine with scopes** | Constraints refine what scopes allow. Check scopes first (cheap), then constraints (may require state lookups). |
+
+## Next steps
+
+- [Issue & verify delegations](/docs/guides/delegation) — Set up constraints when issuing
+- [Credential revocation](/docs/guides/revocation) — Revoke a delegation when constraints aren't enough
+- [Delegation API reference](/docs/api/delegation) — Full `DelegationConstraints` type
