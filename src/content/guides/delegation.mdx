@@ -19,7 +19,7 @@ Owner                            Agent                         Service
 ## Step 1: Set up owner and agent
 
 ```typescript
-import { createAgent, generateKeyPair } from "credat";
+import { createAgent, generateKeyPair } from "@credat/sdk";
 
 // Owner's key pair (in production, load from a secure key store)
 const ownerKeyPair = generateKeyPair("ES256");
@@ -36,7 +36,7 @@ const agent = await createAgent({
 ## Step 2: Issue a delegation
 
 ```typescript
-import { delegate } from "credat";
+import { delegate } from "@credat/sdk";
 
 const delegation = await delegate({
   agent: agent.did,                    // Who receives the delegation
@@ -73,7 +73,7 @@ The `delegation.token` string is what the agent stores and presents to services.
 On the service side, verify with just the owner's public key:
 
 ```typescript
-import { verifyDelegation } from "credat";
+import { verifyDelegation } from "@credat/sdk";
 
 const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeyPair.publicKey,
@@ -93,7 +93,7 @@ if (result.valid) {
 ## Step 4: Check scopes before acting
 
 ```typescript
-import { hasScope, hasAllScopes } from "credat";
+import { hasScope, hasAllScopes } from "@credat/sdk";
 
 // Single scope check
 if (hasScope(result, "email:send")) {
@@ -135,7 +135,7 @@ if (result.valid && result.constraints) {
 To support revoking delegations after they've been issued:
 
 ```typescript
-import { delegate, createStatusList, setRevocationStatus, isRevoked } from "credat";
+import { delegate, createStatusList, setRevocationStatus, isRevoked } from "@credat/sdk";
 
 // 1. Create a status list
 const statusList = createStatusList({

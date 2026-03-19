@@ -28,7 +28,7 @@ function createChallenge(options: { from: string }): ChallengeMessage
 ### Example
 
 ```typescript
-import { createChallenge } from "credat";
+import { createChallenge } from "@credat/sdk";
 
 const challenge = createChallenge({ from: "did:web:service.com" });
 // {
@@ -74,7 +74,7 @@ function presentCredentials(options: PresentOptions): Promise<PresentationMessag
 ### Example
 
 ```typescript
-import { presentCredentials } from "credat";
+import { presentCredentials } from "@credat/sdk";
 
 const presentation = await presentCredentials({
   challenge,
@@ -133,7 +133,7 @@ If `agentAlgorithm` is not specified, it's inferred from the public key:
 ### Example
 
 ```typescript
-import { verifyPresentation } from "credat";
+import { verifyPresentation } from "@credat/sdk";
 
 const result = await verifyPresentation(presentation, {
   challenge,
@@ -169,7 +169,7 @@ import type {
   PresentationMessage,
   AckMessage,
   HandshakeMessage, // Union of all three
-} from "credat";
+} from "@credat/sdk";
 ```
 
 ### `AckMessage`

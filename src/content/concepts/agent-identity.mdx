@@ -71,7 +71,7 @@ did:key:zDn...   (P-256)
 When a service receives a DID, it can resolve it to get the public key:
 
 ```typescript
-import { resolveDID } from "credat";
+import { resolveDID } from "@credat/sdk";
 
 const result = await resolveDID("did:web:acme.com");
 
@@ -104,7 +104,7 @@ The DID Document is a plain JSON file. You can serve it from any static host, CD
 Agent identities can be persisted using a storage adapter:
 
 ```typescript
-import { createAgent, loadAgent, MemoryStorage } from "credat";
+import { createAgent, loadAgent, MemoryStorage } from "@credat/sdk";
 
 const storage = new MemoryStorage();
 

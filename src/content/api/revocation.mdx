@@ -39,7 +39,7 @@ function createStatusList(options: CreateStatusListOptions): StatusListData
 ### Example
 
 ```typescript
-import { createStatusList } from "credat";
+import { createStatusList } from "@credat/sdk";
 
 const statusList = createStatusList({
   id: "status-list-1",
@@ -84,7 +84,7 @@ Throws `CredentialError` with code `STATUS_LIST_INVALID` if `index` is out of ra
 ### Example
 
 ```typescript
-import { createStatusList, setRevocationStatus } from "credat";
+import { createStatusList, setRevocationStatus } from "@credat/sdk";
 
 const statusList = createStatusList({
   id: "status-list-1",
@@ -127,7 +127,7 @@ Throws `CredentialError` with code `STATUS_LIST_INVALID` if `index` is out of ra
 ### Example
 
 ```typescript
-import { createStatusList, setRevocationStatus, isRevoked } from "credat";
+import { createStatusList, setRevocationStatus, isRevoked } from "@credat/sdk";
 
 const statusList = createStatusList({
   id: "status-list-1",
@@ -164,7 +164,7 @@ function encodeStatusList(bitstring: Uint8Array): string
 ### Example
 
 ```typescript
-import { createStatusList, encodeStatusList } from "credat";
+import { createStatusList, encodeStatusList } from "@credat/sdk";
 
 const statusList = createStatusList({
   id: "status-list-1",
@@ -199,7 +199,7 @@ function decodeStatusList(encoded: string): Uint8Array
 ### Example
 
 ```typescript
-import { encodeStatusList, decodeStatusList } from "credat";
+import { encodeStatusList, decodeStatusList } from "@credat/sdk";
 
 const encoded = encodeStatusList(bitstring);
 const decoded = decodeStatusList(encoded);
@@ -236,7 +236,7 @@ function createStatusListCredential(
 ### Example
 
 ```typescript
-import { createStatusList, setRevocationStatus, createStatusListCredential, generateKeyPair } from "credat";
+import { createStatusList, setRevocationStatus, createStatusListCredential, generateKeyPair } from "@credat/sdk";
 
 const ownerKeyPair = generateKeyPair("ES256");
 
@@ -293,7 +293,7 @@ function verifyStatusListCredential(
 ### Example
 
 ```typescript
-import { verifyStatusListCredential, isRevoked, generateKeyPair } from "credat";
+import { verifyStatusListCredential, isRevoked, generateKeyPair } from "@credat/sdk";
 
 const ownerKeyPair = generateKeyPair("ES256");
 
@@ -360,7 +360,7 @@ import {
   loadStatusList,
   listStatusLists,
   MemoryStorage,
-} from "credat";
+} from "@credat/sdk";
 
 const storage = new MemoryStorage();
 

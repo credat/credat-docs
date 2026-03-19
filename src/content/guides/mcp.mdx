@@ -5,10 +5,10 @@
 ## Installation
 
 ```bash
-npm install @credat/mcp credat @modelcontextprotocol/sdk zod
+npm install @credat/mcp @credat/sdk @modelcontextprotocol/sdk zod
 ```
 
-**Requirements:** Node.js 22+, `credat` ^0.2.0, `@modelcontextprotocol/sdk` ^1.27.0, `zod` ^3.25.0
+**Requirements:** Node.js 22+, `@credat/sdk` ^0.2.0, `@modelcontextprotocol/sdk` ^1.27.0, `zod` ^3.25.0
 
 ## Quick start
 
@@ -17,7 +17,7 @@ npm install @credat/mcp credat @modelcontextprotocol/sdk zod
 ```typescript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { base64urlToUint8Array } from "credat";
+import { base64urlToUint8Array } from "@credat/sdk";
 import { z } from "zod";
 import { CredatAuth } from "@credat/mcp";
 
@@ -72,8 +72,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
   createAgent, delegate, generateKeyPair, presentCredentials,
-} from "credat";
-import type { ChallengeMessage } from "credat";
+} from "@credat/sdk";
+import type { ChallengeMessage } from "@credat/sdk";
 
 // Set up identities
 const ownerKeyPair = generateKeyPair("ES256");
@@ -313,7 +313,7 @@ Credat SDK errors (e.g. `DELEGATION_EXPIRED`, `HANDSHAKE_VERIFICATION_FAILED`) a
 For servers that accept connections from multiple agents, use `resolveAgentKey` instead of a static `agentPublicKey`:
 
 ```typescript
-import { resolveDID, jwkToPublicKey } from "credat";
+import { resolveDID, jwkToPublicKey } from "@credat/sdk";
 
 const auth = new CredatAuth({
   serverDid: "did:web:api.example.com",

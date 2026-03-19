@@ -32,7 +32,7 @@ function resolveDID(did: string): Promise<DIDResolutionResult>
 ### Example
 
 ```typescript
-import { resolveDID } from "credat";
+import { resolveDID } from "@credat/sdk";
 
 // Resolve did:web (makes HTTP request)
 const webResult = await resolveDID("did:web:acme.com");
@@ -76,7 +76,7 @@ function createDidWeb(domain: string, path?: string): string
 ### Examples
 
 ```typescript
-import { createDidWeb } from "credat";
+import { createDidWeb } from "@credat/sdk";
 
 createDidWeb("acme.com");
 // "did:web:acme.com"
@@ -96,7 +96,7 @@ function didWebToUrl(did: string): string
 ### Examples
 
 ```typescript
-import { didWebToUrl } from "credat";
+import { didWebToUrl } from "@credat/sdk";
 
 didWebToUrl("did:web:acme.com");
 // "https://acme.com/.well-known/did.json"
@@ -138,7 +138,7 @@ function createDidKey(publicKey: Uint8Array, algorithm: Algorithm): string
 ### Example
 
 ```typescript
-import { createDidKey, generateKeyPair } from "credat";
+import { createDidKey, generateKeyPair } from "@credat/sdk";
 
 const keys = generateKeyPair("EdDSA");
 const did = createDidKey(keys.publicKey, "EdDSA");
@@ -156,7 +156,7 @@ function resolveDidKey(did: string): DIDResolutionResult
 ### Example
 
 ```typescript
-import { resolveDidKey } from "credat";
+import { resolveDidKey } from "@credat/sdk";
 
 const result = resolveDidKey("did:key:z6Mkh...");
 if (result.didDocument) {

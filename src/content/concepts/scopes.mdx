@@ -30,7 +30,7 @@ api:billing:write   // Write billing data
 After verifying a delegation or presentation, use the scope helpers:
 
 ```typescript
-import { hasScope, hasAnyScope, hasAllScopes, getAllScopes } from "credat";
+import { hasScope, hasAnyScope, hasAllScopes, getAllScopes } from "@credat/sdk";
 
 const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeyPair.publicKey,

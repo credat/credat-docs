@@ -20,7 +20,7 @@ Each link in the chain can only grant a **subset** of the parent's scopes — an
 Use the `parentDelegation` field in `delegate()` to create a sub-delegation:
 
 ```typescript
-import { delegate, generateKeyPair, createAgent } from "credat";
+import { delegate, generateKeyPair, createAgent } from "@credat/sdk";
 
 // Owner delegates to Agent A
 const ownerKeyPair = generateKeyPair("ES256");
@@ -71,7 +71,7 @@ await delegate({
 When verifying a chained delegation, you must provide a `resolveSignerKey` callback so Credat can look up each intermediate agent's public key:
 
 ```typescript
-import { verifyDelegation, resolveDID, jwkToPublicKey } from "credat";
+import { verifyDelegation, resolveDID, jwkToPublicKey } from "@credat/sdk";
 
 const result = await verifyDelegation(delegationB.token, {
   ownerPublicKey: ownerKeyPair.publicKey,

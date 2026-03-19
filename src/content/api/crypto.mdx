@@ -32,7 +32,7 @@ function generateKeyPair(algorithm: Algorithm): KeyPair
 ### Example
 
 ```typescript
-import { generateKeyPair } from "credat";
+import { generateKeyPair } from "@credat/sdk";
 
 const keys = generateKeyPair("ES256");
 // keys.publicKey  → Uint8Array(33) (P-256 compressed)
@@ -72,7 +72,7 @@ function sign(
 ### Example
 
 ```typescript
-import { sign, generateKeyPair } from "credat";
+import { sign, generateKeyPair } from "@credat/sdk";
 
 const keys = generateKeyPair("ES256");
 const message = new TextEncoder().encode("hello");
@@ -110,7 +110,7 @@ function verifySignature(
 ### Example
 
 ```typescript
-import { sign, verifySignature, generateKeyPair } from "credat";
+import { sign, verifySignature, generateKeyPair } from "@credat/sdk";
 
 const keys = generateKeyPair("EdDSA");
 const message = new TextEncoder().encode("hello");
@@ -159,7 +159,7 @@ function base64urlToUint8Array(base64url: string): Uint8Array
 ### Example
 
 ```typescript
-import { publicKeyToJwk, jwkToPublicKey, generateKeyPair } from "credat";
+import { publicKeyToJwk, jwkToPublicKey, generateKeyPair } from "@credat/sdk";
 
 const keys = generateKeyPair("ES256");
 

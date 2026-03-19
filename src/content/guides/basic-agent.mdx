@@ -5,13 +5,13 @@ This guide walks you through creating an agent identity, persisting it, and unde
 ## Prerequisites
 
 ```bash
-npm install credat
+npm install @credat/sdk
 ```
 
 ## Step 1: Create the agent
 
 ```typescript
-import { createAgent } from "credat";
+import { createAgent } from "@credat/sdk";
 
 const agent = await createAgent({
   domain: "acme.com",
@@ -102,7 +102,7 @@ writeFileSync(
 Use a storage adapter to save and reload agent identities:
 
 ```typescript
-import { createAgent, loadAgent, MemoryStorage } from "credat";
+import { createAgent, loadAgent, MemoryStorage } from "@credat/sdk";
 
 const storage = new MemoryStorage();
 
@@ -127,7 +127,7 @@ console.log(same.did === agent.did); // true
 Implement `StorageAdapter` for any backing store:
 
 ```typescript
-import type { StorageAdapter } from "credat";
+import type { StorageAdapter } from "@credat/sdk";
 
 class RedisStorage implements StorageAdapter {
   constructor(private redis: RedisClient) {}

@@ -31,7 +31,7 @@ Service                         Agent
 The service creates a challenge containing a random nonce (a one-time-use random value):
 
 ```typescript
-import { createChallenge } from "credat";
+import { createChallenge } from "@credat/sdk";
 
 const challenge = createChallenge({ from: "did:web:service.com" });
 // {
@@ -49,7 +49,7 @@ The nonce prevents replay attacks. Each handshake uses a fresh nonce.
 The agent signs the nonce with its private key and presents it alongside the delegation credential:
 
 ```typescript
-import { presentCredentials } from "credat";
+import { presentCredentials } from "@credat/sdk";
 
 const presentation = await presentCredentials({
   challenge,
@@ -70,7 +70,7 @@ const presentation = await presentCredentials({
 The service verifies everything:
 
 ```typescript
-import { verifyPresentation } from "credat";
+import { verifyPresentation } from "@credat/sdk";
 
 const result = await verifyPresentation(presentation, {
   challenge,                           // The original challenge

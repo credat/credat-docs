@@ -21,7 +21,7 @@ const agent = await createAgent({ domain: "acme.com", algorithm: "ES256" });
 If you pass a `storage` option to `createAgent` or `loadAgent`, the adapter must implement all five methods: `get`, `set`, `delete`, `list`, and `clear`. A missing method throws at runtime.
 
 ```typescript
-import { MemoryStorage, createAgent } from "credat";
+import { MemoryStorage, createAgent } from "@credat/sdk";
 
 // For testing, use the built-in MemoryStorage
 const agent = await createAgent({
@@ -178,7 +178,7 @@ import {
   jwkToPublicKey,
   uint8ArrayToBase64url,
   base64urlToUint8Array,
-} from "credat";
+} from "@credat/sdk";
 
 // To JWK (for DID Documents, external APIs)
 const jwk = publicKeyToJwk(agent.keyPair.publicKey, "ES256");
@@ -200,7 +200,7 @@ const decoded = base64urlToUint8Array(encoded);
 All Credat errors include a `code` and optionally a `humanMessage` for end users.
 
 ```typescript
-import { CredatError } from "credat";
+import { CredatError } from "@credat/sdk";
 
 try {
   const result = await verifyPresentation(presentation, options);

@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-npm install credat
+npm install @credat/sdk
 ```
 
 Credat has zero runtime dependencies beyond `@noble/curves` and `@noble/hashes` for cryptography.
@@ -12,7 +12,7 @@ It works in Node.js 22+ and modern browsers.
 ## Your first agent in 30 seconds
 
 ```typescript
-import { createAgent, delegate, verifyDelegation } from "credat";
+import { createAgent, delegate, verifyDelegation } from "@credat/sdk";
 
 // 1. Create an agent identity on your domain
 const agent = await createAgent({
@@ -48,7 +48,7 @@ console.log(result.owner);   // "did:web:acme.com"
 ### Generating owner keys
 
 ```typescript
-import { generateKeyPair } from "credat";
+import { generateKeyPair } from "@credat/sdk";
 
 const ownerKeyPair = generateKeyPair("ES256");
 // { algorithm: "ES256", publicKey: Uint8Array, privateKey: Uint8Array }

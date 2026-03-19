@@ -16,7 +16,7 @@ function hasScope(result: { scopes: string[] }, scope: string): boolean
 ### Example
 
 ```typescript
-import { hasScope } from "credat";
+import { hasScope } from "@credat/sdk";
 
 if (hasScope(result, "email:read")) {
   // Agent has email:read permission
@@ -36,7 +36,7 @@ function hasAnyScope(result: { scopes: string[] }, scopes: string[]): boolean
 ### Example
 
 ```typescript
-import { hasAnyScope } from "credat";
+import { hasAnyScope } from "@credat/sdk";
 
 if (hasAnyScope(result, ["files:read", "files:write"])) {
   // Agent has at least one file permission
@@ -56,7 +56,7 @@ function hasAllScopes(result: { scopes: string[] }, scopes: string[]): boolean
 ### Example
 
 ```typescript
-import { hasAllScopes } from "credat";
+import { hasAllScopes } from "@credat/sdk";
 
 if (hasAllScopes(result, ["email:read", "email:send"])) {
   // Agent has complete email access
@@ -76,7 +76,7 @@ function getAllScopes(result: { scopes: string[] }): string[]
 ### Example
 
 ```typescript
-import { getAllScopes } from "credat";
+import { getAllScopes } from "@credat/sdk";
 
 const scopes = getAllScopes(result);
 // ["email:read", "email:send", "calendar:write"]
@@ -121,7 +121,7 @@ function validateConstraints(
 ### Example
 
 ```typescript
-import { verifyDelegation, validateConstraints } from "credat";
+import { verifyDelegation, validateConstraints } from "@credat/sdk";
 
 const result = await verifyDelegation(token, { ownerPublicKey });
 
@@ -152,7 +152,7 @@ if (result.valid) {
 A typical scope check in an API handler:
 
 ```typescript
-import { verifyPresentation, hasScope, hasAllScopes } from "credat";
+import { verifyPresentation, hasScope, hasAllScopes } from "@credat/sdk";
 
 async function handleRequest(presentation, challenge) {
   const result = await verifyPresentation(presentation, {

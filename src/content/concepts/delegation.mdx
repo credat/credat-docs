@@ -15,7 +15,7 @@ A **delegation** is a cryptographically signed permission slip from an owner to 
 It says: *"I (the owner) authorize this agent to do X, Y, and Z, until this date, under these constraints."*
 
 ```typescript
-import { delegate } from "credat";
+import { delegate } from "@credat/sdk";
 
 const delegation = await delegate({
   agent: "did:web:acme.com:agent-1",
@@ -48,7 +48,7 @@ The resulting credential (`delegation.token`) is an SD-JWT VC --- a compact, sig
 Any service can verify a delegation with just the owner's public key:
 
 ```typescript
-import { verifyDelegation } from "credat";
+import { verifyDelegation } from "@credat/sdk";
 
 const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeyPair.publicKey,

@@ -10,7 +10,7 @@ When you issue a delegation with constraints, they're embedded as selectively-di
 in the SD-JWT VC token:
 
 ```typescript
-import { delegate, generateKeyPair } from "credat";
+import { delegate, generateKeyPair } from "@credat/sdk";
 
 const ownerKeyPair = generateKeyPair("ES256");
 
@@ -42,7 +42,7 @@ limits the owner imposed.
 After verifying a delegation, constraints are available on the result:
 
 ```typescript
-import { verifyDelegation } from "credat";
+import { verifyDelegation } from "@credat/sdk";
 
 const result = await verifyDelegation(delegation.token, {
   ownerPublicKey: ownerKeyPair.publicKey,
@@ -188,7 +188,7 @@ function checkCustomConstraints(
 A middleware that verifies the delegation and enforces all constraints before handling the request:
 
 ```typescript
-import { verifyDelegation, hasScope } from "credat";
+import { verifyDelegation, hasScope } from "@credat/sdk";
 
 async function enforceConstraints(req, res, next) {
   const result = await verifyDelegation(req.delegationToken, {

@@ -12,7 +12,7 @@ import {
   HandshakeError, // Handshake protocol
   DIDError,       // DID resolution
   CredentialError,// Low-level credential operations
-} from "credat";
+} from "@credat/sdk";
 ```
 
 ### `CredatError`
@@ -28,7 +28,7 @@ The base error class. All other error classes extend it.
 ### Example
 
 ```typescript
-import { createAgent, AgentError, ErrorCodes } from "credat";
+import { createAgent, AgentError, ErrorCodes } from "@credat/sdk";
 
 try {
   await createAgent({ domain: "" });
@@ -95,7 +95,7 @@ try {
 All error codes are available as a constant for switch statements and comparisons:
 
 ```typescript
-import { ErrorCodes } from "credat";
+import { ErrorCodes } from "@credat/sdk";
 
 // ErrorCodes.DID_NOT_FOUND === "DID_NOT_FOUND"
 // ErrorCodes.DELEGATION_EXPIRED === "DELEGATION_EXPIRED"

@@ -24,7 +24,7 @@ whether a credential has been revoked.
 ## Step 1: Create a status list
 
 ```typescript
-import { createStatusList, generateKeyPair } from "credat";
+import { createStatusList, generateKeyPair } from "@credat/sdk";
 
 const ownerKeyPair = generateKeyPair("ES256");
 const ownerDid = "did:web:acme.com";
@@ -48,7 +48,7 @@ The minimum size of 131,072 entries is required by the W3C spec to prevent corre
 Assign each delegation a unique index in the status list:
 
 ```typescript
-import { delegate } from "credat";
+import { delegate } from "@credat/sdk";
 
 let nextIndex = 0;
 
@@ -79,7 +79,7 @@ const bot2 = await issueDelegation("did:web:acme.com:agents:bot-2", ["api:read",
 The status list must be published as a signed JWT at the URL you specified. Here's an Express example:
 
 ```typescript
-import { createStatusListCredential } from "credat";
+import { createStatusListCredential } from "@credat/sdk";
 import express from "express";
 
 const app = express();
@@ -107,7 +107,7 @@ app.listen(3000);
 When you need to revoke a delegation, flip the bit and republish:
 
 ```typescript
-import { setRevocationStatus, createStatusListCredential } from "credat";
+import { setRevocationStatus, createStatusListCredential } from "@credat/sdk";
 
 function revoke(index: number) {
   // 1. Flip the bit
@@ -144,7 +144,7 @@ import {
   verifyDelegation,
   verifyStatusListCredential,
   isRevoked,
-} from "credat";
+} from "@credat/sdk";
 
 async function verifyWithRevocationCheck(
   token: string,

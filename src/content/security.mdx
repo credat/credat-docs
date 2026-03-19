@@ -12,7 +12,7 @@ Every handshake starts with a challenge containing a random nonce. If you don't 
 Set a short TTL on challenges and delete them after use:
 
 ```typescript
-import { createChallenge } from "credat";
+import { createChallenge } from "@credat/sdk";
 
 const challenges = new Map<string, { challenge: ChallengeMessage; expiresAt: number }>();
 
@@ -76,7 +76,7 @@ Agent replays same presentation ──> Server B (nonce still valid!) ← replay
 Use Redis, a database, or any shared store that all servers can access:
 
 ```typescript
-import { createChallenge, verifyPresentation } from "credat";
+import { createChallenge, verifyPresentation } from "@credat/sdk";
 
 // Issue challenge --- store in Redis
 async function issueChallenge(serviceDid: string) {
@@ -138,7 +138,7 @@ Plain-text key files can be read by anyone with file system access. A compromise
 Implement `StorageAdapter` with encryption:
 
 ```typescript
-import type { StorageAdapter } from "credat";
+import type { StorageAdapter } from "@credat/sdk";
 
 class EncryptedStorage implements StorageAdapter {
   constructor(
@@ -193,7 +193,7 @@ Delegations support time-based validity windows via `validFrom` and `validUntil`
 ### How it works
 
 ```typescript
-import { delegate, verifyDelegation } from "credat";
+import { delegate, verifyDelegation } from "@credat/sdk";
 
 const delegation = await delegate({
   agent: agent.did,
@@ -248,7 +248,7 @@ Short-lived delegations reduce the impact of credential theft: even if an attack
 For maximum control, combine time-based validity with revocation:
 
 ```typescript
-import { delegate, createStatusList, setRevocationStatus } from "credat";
+import { delegate, createStatusList, setRevocationStatus } from "@credat/sdk";
 
 const statusList = createStatusList({
   id: "prod-status-list",
