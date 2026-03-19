@@ -1,0 +1,346 @@
+# MCP Integration
+
+`@credat/mcp` adds a trust and authentication layer to [Model Context Protocol](https://modelcontextprotocol.io) servers. It lets MCP servers verify agent identity, check delegated permissions, and enforce runtime constraints — all through a cryptographic challenge-response handshake over MCP's tool-call interface.
+
+## Installation
+
+```bash
+npm install @credat/mcp credat @modelcontextprotocol/sdk zod
+```
+
+**Requirements:** Node.js 22+, `credat` ^0.2.0, `@modelcontextprotocol/sdk` ^1.27.0, `zod` ^3.25.0
+
+## Quick start
+
+### Server side
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { base64urlToUint8Array } from "credat";
+import { z } from "zod";
+import { CredatAuth } from "@credat/mcp";
+
+const server = new McpServer({ name: "my-service", version: "1.0.0" });
+
+const auth = new CredatAuth({
+  serverDid: "did:web:api.example.com",
+  ownerPublicKey: base64urlToUint8Array(process.env.OWNER_PUBLIC_KEY!),
+});
+
+// Register the auth tools (credat:challenge + credat:authenticate)
+auth.install(server);
+
+// Public tool — no auth required
+server.registerTool(
+  "health",
+  { description: "Health check" },
+  () => ({
+    content: [{ type: "text", text: JSON.stringify({ status: "ok" }) }],
+  }),
+);
+
+// Protected tool — requires "email:read" scope
+server.registerTool(
+  "read-emails",
+  {
+    description: "Read emails",
+    inputSchema: z.object({ query: z.string() }),
+  },
+  auth.protect(
+    { scopes: ["email:read"] },
+    (args, extra) => ({
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          agent: extra.auth.agentDid,
+          results: [{ subject: "Hello", from: "alice@example.com" }],
+        }),
+      }],
+    }),
+  ),
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+### Client side (agent)
+
+```typescript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  createAgent, delegate, generateKeyPair, presentCredentials,
+} from "credat";
+import type { ChallengeMessage } from "credat";
+
+// Set up identities
+const ownerKeyPair = generateKeyPair("ES256");
+const agent = await createAgent({ domain: "agents.example.com", algorithm: "ES256" });
+
+const delegation = await delegate({
+  agent: agent.did,
+  owner: "did:web:example.com",
+  ownerKeyPair,
+  scopes: ["email:read"],
+});
+
+// Connect to MCP server
+const client = new Client({ name: "my-agent", version: "1.0.0" });
+await client.connect(transport);
+
+// 1. Request challenge
+const challengeResult = await client.callTool({
+  name: "credat:challenge",
+  arguments: {},
+});
+const challenge: ChallengeMessage = JSON.parse(
+  (challengeResult.content as Array<{ type: string; text: string }>)[0].text,
+);
+
+// 2. Sign the challenge with your delegation
+const presentation = await presentCredentials({
+  challenge,
+  delegation: delegation.token,
+  agent,
+});
+
+// 3. Authenticate
+const authResult = await client.callTool({
+  name: "credat:authenticate",
+  arguments: { presentation },
+});
+
+// 4. Call protected tools
+const result = await client.callTool({
+  name: "read-emails",
+  arguments: { query: "meeting" },
+});
+```
+
+---
+
+## API Reference
+
+### `CredatAuth`
+
+The main class that manages authentication state and tool registration.
+
+```typescript
+import { CredatAuth } from "@credat/mcp";
+
+const auth = new CredatAuth(options: CredatAuthOptions);
+```
+
+#### `CredatAuthOptions`
+
+| Option | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `serverDid` | `string` | Yes | --- | DID of the server (e.g. `"did:web:api.example.com"`) |
+| `ownerPublicKey` | `Uint8Array` | Yes | --- | Public key of the owner who issues delegations |
+| `agentPublicKey` | `Uint8Array` | No | --- | Static agent key (single-agent mode) |
+| `resolveAgentKey` | `(agentDid: string) => Promise<Uint8Array>` | No | --- | Resolve agent keys dynamically (multi-agent mode) |
+| `challengeMaxAgeMs` | `number` | No | `300000` (5 min) | Challenge nonce TTL |
+| `sessionMaxAgeMs` | `number` | No | `3600000` (1 hour) | Authenticated session TTL |
+| `toolPrefix` | `string` | No | `"credat"` | Tool name prefix |
+
+You must provide either `agentPublicKey` (single-agent) or `resolveAgentKey` (multi-agent). If neither is set, authentication returns a `CONFIGURATION_ERROR`.
+
+#### Methods
+
+##### `install(server: McpServer): void`
+
+Registers the `credat:challenge` and `credat:authenticate` tools on the MCP server. Call this once during setup.
+
+##### `protect(options: ProtectOptions, handler): ToolHandler`
+
+Wraps a tool handler to require authentication and optionally check scopes and constraints. Returns a standard MCP tool handler.
+
+##### `isAuthenticated(sessionId?: string): boolean`
+
+Check whether a session is currently authenticated. Defaults to the stdio session if no `sessionId` is given.
+
+##### `getSessionAuth(sessionId?: string): SessionAuth | undefined`
+
+Get the full delegation result for a session. Returns `undefined` if not authenticated or expired.
+
+##### `revokeSession(sessionId?: string): void`
+
+Force re-authentication by clearing the session.
+
+---
+
+### `protect()` options
+
+```typescript
+auth.protect(options: ProtectOptions, handler)
+```
+
+#### `ProtectOptions`
+
+| Option | Type | Description |
+|---|---|---|
+| `scopes` | `string[]` | Agent must have **all** of these scopes |
+| `anyScope` | `string[]` | Agent must have **at least one** of these scopes |
+| `constraintContext` | `ConstraintContext \| (args) => ConstraintContext` | Context for runtime constraint validation |
+
+#### Auth context in handlers
+
+Protected handlers receive `extra.auth` with the verified delegation info:
+
+```typescript
+auth.protect({ scopes: ["email:send"] }, (args, extra) => {
+  const { agentDid, ownerDid, scopes, constraints } = extra.auth;
+  // ...
+});
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `agentDid` | `string` | Authenticated agent's DID |
+| `ownerDid` | `string` | DID of the owner who delegated |
+| `scopes` | `string[]` | Granted scopes |
+| `constraints` | `DelegationConstraints \| undefined` | Delegation constraints |
+
+---
+
+### Constraint validation
+
+Use `constraintContext` to enforce runtime constraints from the delegation:
+
+```typescript
+server.registerTool(
+  "send-email",
+  {
+    description: "Send an email",
+    inputSchema: z.object({
+      to: z.string(),
+      subject: z.string(),
+      body: z.string(),
+    }),
+  },
+  auth.protect(
+    {
+      scopes: ["email:send"],
+      constraintContext: (args) => ({
+        domain: (args.to as string).split("@")[1],
+      }),
+    },
+    (args, extra) => ({
+      content: [{
+        type: "text",
+        text: JSON.stringify({ sent: true, by: extra.auth.agentDid }),
+      }],
+    }),
+  ),
+);
+```
+
+The three built-in constraint checks are:
+- `maxTransactionValue` — rejects if `context.transactionValue` exceeds the limit
+- `allowedDomains` — rejects if `context.domain` is not in the allowed list
+- `rateLimit` — rejects if `context.rateLimit` exceeds the limit
+
+---
+
+### MCP tools
+
+`auth.install()` registers two tools on the server:
+
+#### `credat:challenge`
+
+Request an authentication challenge. Takes no input, returns a `ChallengeMessage`:
+
+```json
+{
+  "type": "credat:challenge",
+  "nonce": "...",
+  "from": "did:web:api.example.com",
+  "timestamp": 1711234567890
+}
+```
+
+Nonces are single-use and expire after `challengeMaxAgeMs`.
+
+#### `credat:authenticate`
+
+Present signed credentials to authenticate. Expects a `presentation` object (created with Credat's `presentCredentials()`):
+
+```json
+{
+  "presentation": {
+    "type": "credat:presentation",
+    "delegation": "eyJ...",
+    "nonce": "...",
+    "proof": "...",
+    "from": "did:web:agents.example.com:my-agent"
+  }
+}
+```
+
+Returns on success:
+
+```json
+{ "authenticated": true, "agent": "did:web:...", "scopes": ["email:read"] }
+```
+
+---
+
+### Error codes
+
+All errors are returned as `isError: true` tool results with a JSON payload:
+
+```json
+{ "error": "message", "code": "ERROR_CODE", "details": ["..."] }
+```
+
+| Code | When |
+|---|---|
+| `NOT_AUTHENTICATED` | No session found, or challenge consumed/expired |
+| `SESSION_EXPIRED` | Session exceeded `sessionMaxAgeMs` |
+| `SESSION_MISMATCH` | Challenge was issued to a different session |
+| `INSUFFICIENT_SCOPES` | Agent doesn't have the required scopes |
+| `CONSTRAINT_VIOLATION` | Runtime constraint check failed |
+| `CONFIGURATION_ERROR` | No `agentPublicKey` or `resolveAgentKey` configured |
+
+Credat SDK errors (e.g. `DELEGATION_EXPIRED`, `HANDSHAKE_VERIFICATION_FAILED`) are passed through when the underlying credential verification fails.
+
+---
+
+### Multi-agent mode
+
+For servers that accept connections from multiple agents, use `resolveAgentKey` instead of a static `agentPublicKey`:
+
+```typescript
+import { resolveDID, jwkToPublicKey } from "credat";
+
+const auth = new CredatAuth({
+  serverDid: "did:web:api.example.com",
+  ownerPublicKey: base64urlToUint8Array(process.env.OWNER_PUBLIC_KEY!),
+  resolveAgentKey: async (agentDid) => {
+    const resolution = await resolveDID(agentDid);
+    const jwk = resolution.didDocument!.verificationMethod![0].publicKeyJwk!;
+    return jwkToPublicKey(jwk);
+  },
+});
+```
+
+---
+
+### Session management
+
+Sessions are managed in-memory. For stdio transport, a single default session is used. For HTTP-based transports (SSE, Streamable HTTP), sessions are keyed by the MCP session ID.
+
+```typescript
+// Check if the current session is authenticated
+if (auth.isAuthenticated(sessionId)) {
+  const session = auth.getSessionAuth(sessionId);
+  console.log("Agent:", session!.delegationResult.agent);
+}
+
+// Force re-authentication
+auth.revokeSession(sessionId);
+```
+
+Sessions auto-expire after `sessionMaxAgeMs` (default: 1 hour). Expired sessions trigger a `SESSION_EXPIRED` error, prompting the client to re-authenticate.

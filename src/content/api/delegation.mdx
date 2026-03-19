@@ -22,6 +22,8 @@ function delegate(options: DelegateOptions): Promise<DelegationCredential>
 | `validFrom` | `string` | No | --- | ISO 8601 start time |
 | `validUntil` | `string` | No | --- | ISO 8601 expiration time |
 | `statusList` | `{ url: string; index: number }` | No | --- | Status list entry for revocation |
+| `parentDelegation` | `{ token: string; parentOwnerPublicKey: Uint8Array }` | No | --- | Parent delegation for chaining (see [Delegation Chains](/docs/guides/delegation-chains)) |
+| `maxChainDepth` | `number` | No | `3` | Maximum allowed chain depth |
 
 #### `DelegationConstraints`
 
@@ -102,6 +104,9 @@ function verifyDelegation(
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ownerPublicKey` | `Uint8Array` | Yes | --- | The owner's public key |
+| `checkRevocation` | `(entry: StatusListEntry) => Promise<boolean>` | No | --- | Callback to check if a credential is revoked |
+| `maxChainDepth` | `number` | No | `3` | Maximum allowed chain depth for chained delegations |
+| `resolveSignerKey` | `(agentDid: string) => Promise<Uint8Array>` | No | --- | Resolve an agent's public key by DID (required for chained delegations) |
 
 ### Returns
 
@@ -140,7 +145,9 @@ if (result.valid) {
 |---|---|
 | `DELEGATION_SIGNATURE_INVALID` | Token was not signed by the given public key |
 | `DELEGATION_EXPIRED` | Delegation has expired |
+| `DELEGATION_NOT_YET_VALID` | Delegation's `validFrom` is in the future |
 | `DELEGATION_REVOKED` | Delegation was revoked via status list |
+| `DELEGATION_INVALID` | Chain depth exceeded, parent invalid, or missing `resolveSignerKey` |
 
 ---
 

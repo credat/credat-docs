@@ -27,8 +27,7 @@ function createAgent(config: AgentConfig): Promise<AgentIdentity>
 |---|---|---|
 | `did` | `string` | The DID, e.g. `did:web:acme.com` |
 | `didDocument` | `DIDDocument` | The DID Document containing the public key |
-| `keyPair` | `{ algorithm: string, publicKey: Uint8Array, privateKey: Uint8Array }` | The cryptographic key pair |
-| `algorithm` | `string` | The signing algorithm used |
+| `keyPair` | `KeyPair` | The cryptographic key pair (contains `algorithm`, `publicKey`, `privateKey`) |
 | `domain` | `string` | The domain |
 | `path` | `string \| undefined` | The sub-path, if any |
 

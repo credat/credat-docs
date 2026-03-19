@@ -66,6 +66,11 @@ interface DelegateOptions {
   validFrom?: string;
   validUntil?: string;
   statusList?: { url: string; index: number };
+  parentDelegation?: {
+    token: string;
+    parentOwnerPublicKey: Uint8Array;
+  };
+  maxChainDepth?: number;
 }
 ```
 
@@ -79,6 +84,8 @@ interface DelegateOptions {
 | `validFrom` | `string` | No | ISO 8601 start time |
 | `validUntil` | `string` | No | ISO 8601 expiration time |
 | `statusList` | `{ url: string; index: number }` | No | Status list entry for revocation support |
+| `parentDelegation` | `{ token: string; parentOwnerPublicKey: Uint8Array }` | No | Parent delegation for chaining |
+| `maxChainDepth` | `number` | No | Maximum allowed chain depth (default: `3`) |
 
 ### `DelegationCredential`
 
@@ -611,8 +618,8 @@ Interface for pluggable storage backends. Implement this to persist agent identi
 interface StorageAdapter {
   get<T>(collection: string, key: string): Promise<T | null>;
   set<T>(collection: string, key: string, value: T): Promise<void>;
-  delete(collection: string, key: string): Promise<void>;
-  list<T>(collection: string): Promise<T[]>;
+  delete(collection: string, key: string): Promise<boolean>;
+  list<T>(collection: string): Promise<Array<{ key: string; value: T }>>;
   clear(collection?: string): Promise<void>;
 }
 ```
@@ -621,8 +628,8 @@ interface StorageAdapter {
 |---|---|---|
 | `get` | `get<T>(collection, key): Promise<T \| null>` | Retrieve a value by collection and key |
 | `set` | `set<T>(collection, key, value): Promise<void>` | Store a value |
-| `delete` | `delete(collection, key): Promise<void>` | Delete a value |
-| `list` | `list<T>(collection): Promise<T[]>` | List all values in a collection |
+| `delete` | `delete(collection, key): Promise<boolean>` | Delete a value, returns `true` if it existed |
+| `list` | `list<T>(collection): Promise<Array<{ key: string; value: T }>>` | List all entries in a collection |
 | `clear` | `clear(collection?): Promise<void>` | Clear a collection, or all data if no collection is given |
 
 Credat ships with `MemoryStorage`, an in-memory implementation. See the [Agent API](/api/agent#memorystorage) for details.

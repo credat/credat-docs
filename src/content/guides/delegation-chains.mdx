@@ -1,0 +1,130 @@
+# Delegation Chains
+
+Delegation chains allow an agent to sub-delegate a subset of its permissions to another agent. This enables hierarchical trust — an owner delegates to agent A, who can then delegate a narrower set of scopes to agent B.
+
+## How chains work
+
+A **chain** is formed when a delegation credential embeds a reference to its parent delegation. During verification, Credat walks the chain back to the root owner, checking each link's signature and scope constraints along the way.
+
+```
+Owner (root key)
+  └─ delegates [read, write, admin] → Agent A
+       └─ sub-delegates [read, write] → Agent B   (chain depth 1)
+            └─ sub-delegates [read] → Agent C     (chain depth 2)
+```
+
+Each link in the chain can only grant a **subset** of the parent's scopes — an agent can never escalate its own permissions.
+
+## Issue a chained delegation
+
+Use the `parentDelegation` field in `delegate()` to create a sub-delegation:
+
+```typescript
+import { delegate, generateKeyPair, createAgent } from "credat";
+
+// Owner delegates to Agent A
+const ownerKeyPair = generateKeyPair("ES256");
+const agentA = await createAgent({ domain: "agents.acme.com", path: "a" });
+
+const delegationA = await delegate({
+  agent: agentA.did,
+  owner: "did:web:acme.com",
+  ownerKeyPair,
+  scopes: ["files:read", "files:write", "files:admin"],
+});
+
+// Agent A sub-delegates to Agent B (narrower scopes)
+const agentB = await createAgent({ domain: "agents.acme.com", path: "b" });
+
+const delegationB = await delegate({
+  agent: agentB.did,
+  owner: agentA.did,
+  ownerKeyPair: agentA.keyPair,
+  scopes: ["files:read", "files:write"], // subset of A's scopes
+  parentDelegation: {
+    token: delegationA.token,
+    parentOwnerPublicKey: ownerKeyPair.publicKey,
+  },
+});
+```
+
+### Scope subsetting
+
+If you try to grant scopes the parent doesn't have, `delegate()` throws a `DELEGATION_SCOPE_INVALID` error:
+
+```typescript
+// This throws — "files:delete" is not in Agent A's scopes
+await delegate({
+  agent: agentB.did,
+  owner: agentA.did,
+  ownerKeyPair: agentA.keyPair,
+  scopes: ["files:read", "files:delete"],
+  parentDelegation: {
+    token: delegationA.token,
+    parentOwnerPublicKey: ownerKeyPair.publicKey,
+  },
+});
+```
+
+## Verify a chained delegation
+
+When verifying a chained delegation, you must provide a `resolveSignerKey` callback so Credat can look up each intermediate agent's public key:
+
+```typescript
+import { verifyDelegation, resolveDID, jwkToPublicKey } from "credat";
+
+const result = await verifyDelegation(delegationB.token, {
+  ownerPublicKey: ownerKeyPair.publicKey,
+  resolveSignerKey: async (agentDid) => {
+    // Resolve the agent's DID document to get their public key
+    const resolution = await resolveDID(agentDid);
+    const jwk = resolution.didDocument!.verificationMethod![0].publicKeyJwk!;
+    return jwkToPublicKey(jwk);
+  },
+});
+
+if (result.valid) {
+  console.log("Chain verified:", result.scopes); // ["files:read", "files:write"]
+}
+```
+
+If `resolveSignerKey` is not provided for a chained delegation, verification returns a `DELEGATION_INVALID` error with the message `"resolveSignerKey callback required for chained delegations"`.
+
+## Chain depth limits
+
+By default, chains are limited to a depth of **3**. You can configure this on both issuance and verification:
+
+```typescript
+// At issuance — reject chains deeper than 2
+const delegation = await delegate({
+  // ...
+  parentDelegation: { token: parentToken, parentOwnerPublicKey: ownerKey },
+  maxChainDepth: 2,
+});
+
+// At verification — reject chains deeper than 2
+const result = await verifyDelegation(token, {
+  ownerPublicKey: ownerKey,
+  resolveSignerKey: async (did) => { /* ... */ },
+  maxChainDepth: 2,
+});
+```
+
+If the chain exceeds the maximum depth, `delegate()` throws a `DELEGATION_INVALID` error and `verifyDelegation()` returns `{ valid: false }` with the same error code.
+
+## Combining with revocation
+
+Chain verification supports the `checkRevocation` callback. When provided, each link in the chain is checked for revocation:
+
+```typescript
+const result = await verifyDelegation(delegationB.token, {
+  ownerPublicKey: ownerKeyPair.publicKey,
+  resolveSignerKey: async (did) => { /* ... */ },
+  checkRevocation: async (entry) => {
+    const status = await isRevoked(entry.statusListUrl, entry.statusListIndex);
+    return status === "revoked";
+  },
+});
+```
+
+Revoking any link in the chain invalidates all downstream delegations.
