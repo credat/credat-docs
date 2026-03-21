@@ -1,7 +1,7 @@
 # CLI Reference
 
-The Credat CLI lets you create agent identities, issue delegation credentials, and verify trust
-chains from the terminal — no code required.
+The Credat CLI lets you create agent identities, issue delegation credentials, verify trust
+chains, inspect tokens, manage revocation, and run handshake flows from the terminal — no code required.
 
 ## Installation
 
@@ -23,7 +23,13 @@ credat delegate --scopes payments:read,invoices:create --until 2026-12-31
 # 3. Verify the delegation
 credat verify
 
-# 4. Check current state
+# 4. Inspect the raw token
+credat inspect
+
+# 5. Audit against security best practices
+credat audit
+
+# 6. Check current state
 credat status
 ```
 
@@ -41,6 +47,7 @@ credat init --domain acme.corp
 credat init --domain acme.corp --path agents/assistant
 credat init --domain acme.corp --algorithm EdDSA
 credat init --domain acme.corp --force  # overwrite existing
+credat init --domain acme.corp --output keys/agent.json
 ```
 
 | Option | Description |
@@ -49,9 +56,9 @@ credat init --domain acme.corp --force  # overwrite existing
 | `-p, --path <path>` | Optional sub-path for the DID |
 | `-a, --algorithm <alg>` | `ES256` (default) or `EdDSA` |
 | `-f, --force` | Overwrite existing agent identity |
+| `-o, --output <file>` | Custom output path (default: `.credat/agent.json`) |
 
-**Output:** Creates `.credat/agent.json` with the agent identity and `.credat/owner.json` with the
-owner key pair.
+**Output:** Creates `.credat/agent.json` (or custom path) with the agent identity and `.credat/owner.json` with the owner key pair.
 
 ---
 
@@ -63,6 +70,7 @@ Issue a delegation credential from the owner to the agent.
 credat delegate --scopes payments:read,invoices:create
 credat delegate --scopes payments:read --max-value 1000 --until 2026-12-31
 credat delegate --agent did:web:other.agent --scopes admin:read
+credat delegate --scopes files:read --output tokens/delegation.json
 ```
 
 | Option | Description |
@@ -71,8 +79,9 @@ credat delegate --agent did:web:other.agent --scopes admin:read
 | `-s, --scopes <scopes>` | Comma-separated scopes (required) |
 | `-m, --max-value <n>` | `maxTransactionValue` constraint |
 | `-u, --until <date>` | Expiration date (ISO 8601) |
+| `-o, --output <file>` | Custom output path (default: `.credat/delegation.json`) |
 
-**Output:** Saves the signed delegation token to `.credat/delegation.json`.
+**Output:** Saves the signed delegation token to `.credat/delegation.json` (or custom path).
 
 ---
 
@@ -84,9 +93,109 @@ from `.credat/delegation.json`.
 ```bash
 credat verify
 credat verify eyJhbGciOiJFUzI1NiIs...
+credat verify --json
 ```
 
 Prints the verified agent DID, owner DID, scopes, constraints, and validity window.
+
+---
+
+### `credat inspect [token]`
+
+Decode and inspect a delegation token without verifying its signature. Useful for debugging
+token contents, checking expiration, and viewing selective disclosures.
+
+```bash
+credat inspect
+credat inspect eyJhbGciOiJFUzI1NiIs...
+credat inspect --file tokens/delegation.json
+credat inspect --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f, --file <path>` | Read token from a file (JSON with `token` field, or raw token) |
+
+**Token resolution order:** `--file` flag → direct argument → `.credat/delegation.json`
+
+**Output:**
+- **Header:** JWT algorithm, type, key ID
+- **Payload:** Issuer, subject, credential type, agent, owner, timestamps
+- **Selective Disclosures:** Name-value pairs
+- **Expiration status:** `valid`, `expired`, `not yet valid`, or `no expiry set`
+
+---
+
+### `credat revoke`
+
+Revoke a delegation credential by flipping a bit in a status list.
+
+```bash
+credat revoke
+credat revoke --token eyJhbGci... --index 42
+credat revoke --status-list custom/status.json
+```
+
+| Option | Description |
+|--------|-------------|
+| `-t, --token <token>` | Delegation token (defaults to `.credat/delegation.json`) |
+| `-s, --status-list <path>` | Status list file path (default: `.credat/status-list.json`) |
+| `-i, --index <number>` | Status list index to revoke (extracted from token if not provided) |
+
+If no status list file exists, one is created automatically. The operation is idempotent — revoking
+an already-revoked index succeeds silently.
+
+---
+
+### `credat audit [token]`
+
+Validate a delegation token against security best practices. Checks expiration, scope breadth,
+constraints, revocation endpoint, not-before, and issuer/subject claims.
+
+```bash
+credat audit
+credat audit eyJhbGciOiJFUzI1NiIs...
+credat audit --json
+```
+
+**Audit rules:**
+
+| Rule | Pass | Warn | Fail |
+|------|------|------|------|
+| Expiration | Valid range | Expires in > 365 days | Token expired |
+| Scopes | Appropriate count/specificity | Broad scopes (`:*`, `admin`), or > 10 scopes | — |
+| Constraints | `maxTransactionValue` set | No constraints set | — |
+| Revocation | Status list configured | — | No revocation endpoint |
+| Not-before | Present and active | Token not yet valid | — |
+| Issuer/Subject | Both present | — | Missing `iss` or `sub` claim |
+
+**Output example:**
+```
+  ✓ Expires in 90 days
+  ⚠ Broad scopes detected: payments:* — consider narrowing
+  ✗ No revocation endpoint configured
+
+  3 passed · 1 warning · 1 issue
+```
+
+---
+
+### `credat renew`
+
+Renew a delegation with a new expiry date. Re-issues the existing delegation with the same agent,
+owner, scopes, and constraints but a new `validUntil`.
+
+```bash
+credat renew --until 2027-06-30T23:59:59Z
+credat renew --until 2027-06-30 --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `-u, --until <date>` | New expiration date, ISO 8601 (required, must be in the future) |
+
+Reads the existing delegation from `.credat/delegation.json` and owner from `.credat/owner.json`.
+Saves the renewed delegation back to `.credat/delegation.json`.
 
 ---
 
@@ -96,7 +205,7 @@ Show the current `.credat/` state: agent identity, owner key, and delegation inf
 
 ```bash
 credat status
-credat --json status  # structured JSON output
+credat status --json
 ```
 
 ---
@@ -114,11 +223,140 @@ This is the fastest way to see Credat in action without writing any code.
 
 ---
 
+## Handshake commands
+
+The `credat handshake` subcommands let you perform individual steps of the trust handshake from the terminal.
+
+### `credat handshake challenge`
+
+Create a challenge for an agent to respond to.
+
+```bash
+credat handshake challenge --from did:web:service.example.com
+credat handshake challenge --from did:web:service.example.com --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--from <did>` | Challenger DID (required) |
+
+**Output:** A `ChallengeMessage` JSON with `type`, `nonce`, `from`, and `timestamp`.
+
+### `credat handshake present`
+
+Present credentials in response to a challenge.
+
+```bash
+credat handshake present --challenge '{"type":"credat:challenge","nonce":"...","from":"did:web:service.example.com","timestamp":"..."}'
+```
+
+| Option | Description |
+|--------|-------------|
+| `--challenge <json>` | Challenge JSON string (required) |
+
+Loads agent from `.credat/agent.json` and delegation from `.credat/delegation.json`.
+
+**Output:** A `PresentationMessage` JSON to send back to the challenger.
+
+### `credat handshake verify`
+
+Verify a presentation against a challenge.
+
+```bash
+credat handshake verify --presentation '{"type":"credat:presentation",...}' --challenge '{"type":"credat:challenge",...}'
+```
+
+| Option | Description |
+|--------|-------------|
+| `--presentation <json>` | Presentation JSON string (required) |
+| `--challenge <json>` | Challenge JSON string (required) |
+
+Loads owner and agent keys from `.credat/`. Prints verification result with agent DID, scopes, and any errors.
+
+### `credat handshake demo`
+
+Run a full handshake demo between two in-memory agents. No files or arguments needed.
+
+```bash
+credat handshake demo
+credat handshake demo --json
+```
+
+Creates a service, an agent, delegates scopes, performs the challenge-response flow, and shows the result.
+
+---
+
+## Key management
+
+The `credat keys` subcommands let you export, import, and inspect key pairs.
+
+### `credat keys export`
+
+Export a key pair in JWK format.
+
+```bash
+credat keys export             # exports agent keys (default)
+credat keys export --as owner  # exports owner keys
+credat keys export --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--as <type>` | `agent` (default) or `owner` |
+
+> **Warning:** Output includes private key material. Store it securely and never share it.
+
+### `credat keys import <jwk-data>`
+
+Import a key pair from JWK JSON.
+
+```bash
+credat keys import '{"algorithm":"ES256","publicKey":{...},"privateKey":{...}}'
+credat keys import '...' --as owner
+```
+
+| Option | Description |
+|--------|-------------|
+| `--as <type>` | Import as `agent` (default) or `owner` |
+
+The JWK JSON must include `algorithm`, `publicKey`, and `privateKey` (with the `d` field).
+
+### `credat keys list`
+
+List current key fingerprints without exposing key material.
+
+```bash
+credat keys list
+credat keys list --json
+```
+
+Shows type, DID, algorithm, and a truncated fingerprint for each key.
+
+---
+
+## Shell completions
+
+Generate shell completion scripts for tab-completion support.
+
+```bash
+credat completions bash     # generate bash completions
+credat completions zsh      # generate zsh completions
+credat completions fish     # generate fish completions
+credat completions install  # show install instructions for your shell
+```
+
+**Installation example (zsh):**
+```bash
+credat completions zsh > ~/.zsh/completions/_credat
+```
+
+---
+
 ## Global options
 
 | Option | Description |
 |--------|-------------|
-| `--json` | Output structured JSON (works with `status`, `verify`, `delegate`) |
+| `--json` | Output structured JSON (works with all commands that produce output) |
 | `-V, --version` | Show CLI and SDK versions |
 | `-h, --help` | Show help |
 
@@ -131,6 +369,7 @@ The CLI stores all state in a `.credat/` directory in your current working direc
 | `agent.json` | Agent identity (DID, key pair, DID Document) |
 | `owner.json` | Owner key pair |
 | `delegation.json` | The signed delegation token |
+| `status-list.json` | Revocation status list (created by `credat revoke`) |
 
 > **Security:** The `.credat/` directory contains private keys. Add it to `.gitignore` and
 > never commit it to version control.
@@ -145,7 +384,15 @@ SDK functions:
 | `credat init` | [`createAgent()`](/docs/api/agent#createagent) |
 | `credat delegate` | [`delegate()`](/docs/api/delegation#delegate) |
 | `credat verify` | [`verifyDelegation()`](/docs/api/delegation#verifydelegation) |
-| `credat demo` | Full handshake flow using [`createChallenge()`](/docs/api/handshake), [`presentCredentials()`](/docs/api/handshake#presentcredentials), [`verifyPresentation()`](/docs/api/handshake#verifypresentation) |
+| `credat inspect` | Manual JWT decode (no single SDK function) |
+| `credat revoke` | [`createStatusList()`](/docs/api/revocation#createstatuslist), [`setRevocationStatus()`](/docs/api/revocation#setrevocationstatus), [`isRevoked()`](/docs/api/revocation#isrevoked) |
+| `credat audit` | Custom analysis of token claims |
+| `credat renew` | [`delegate()`](/docs/api/delegation#delegate) (re-issues with new expiry) |
+| `credat handshake challenge` | [`createChallenge()`](/docs/api/handshake#createchallenge) |
+| `credat handshake present` | [`presentCredentials()`](/docs/api/handshake#presentcredentials) |
+| `credat handshake verify` | [`verifyPresentation()`](/docs/api/handshake#verifypresentation) |
+| `credat keys export/import` | [`publicKeyToJwk()`](/docs/api/crypto#publickeytoJwk), [`jwkToPublicKey()`](/docs/api/crypto#jwktopublickey) |
+| `credat demo` | Full handshake flow |
 
 For programmatic usage, use the SDK directly. The CLI is best for prototyping, demos, and quick
 verification tasks.

@@ -117,12 +117,15 @@ If the chain exceeds the maximum depth, `delegate()` throws a `DELEGATION_INVALI
 Chain verification supports the `checkRevocation` callback. When provided, each link in the chain is checked for revocation:
 
 ```typescript
+import { verifyDelegation, isRevoked } from "@credat/sdk";
+
 const result = await verifyDelegation(delegationB.token, {
   ownerPublicKey: ownerKeyPair.publicKey,
   resolveSignerKey: async (did) => { /* ... */ },
   checkRevocation: async (entry) => {
-    const status = await isRevoked(entry.statusListUrl, entry.statusListIndex);
-    return status === "revoked";
+    // Fetch the status list from entry.statusListUrl, then check the index
+    const statusList = await fetchStatusList(entry.statusListUrl);
+    return isRevoked(statusList, entry.statusListIndex); // returns boolean
   },
 });
 ```

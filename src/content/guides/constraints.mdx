@@ -183,6 +183,34 @@ function checkCustomConstraints(
 }
 ```
 
+## Using `validateConstraints()`
+
+The SDK provides a built-in `validateConstraints()` function that performs all three standard checks
+(`maxTransactionValue`, `allowedDomains`, `rateLimit`) in one call:
+
+```typescript
+import { validateConstraints } from "@credat/sdk";
+
+const violations = validateConstraints(
+  result.constraints ?? {},
+  {
+    transactionValue: order.totalAmount,
+    domain: req.hostname,
+    rateLimit: currentRequestCount,
+  },
+);
+
+if (violations.length > 0) {
+  for (const v of violations) {
+    console.log(`${v.constraint}: ${v.message}`);
+  }
+  throw new Error("Constraint violated");
+}
+```
+
+Each violation includes a `constraint` name (e.g. `"maxTransactionValue"`) and a human-readable `message`.
+For custom constraints beyond the three built-in checks, add your own validation logic after calling `validateConstraints()`.
+
 ## Putting it all together
 
 A middleware that verifies the delegation and enforces all constraints before handling the request:

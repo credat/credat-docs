@@ -153,6 +153,7 @@ if (result.valid) {
 | Code | Meaning |
 |---|---|
 | `HANDSHAKE_INVALID_NONCE` | Nonce doesn't match (replay attack or wrong challenge) |
+| `HANDSHAKE_EXPIRED` | Challenge has expired (older than `challengeMaxAgeMs`) |
 | `HANDSHAKE_VERIFICATION_FAILED` | Agent's signature over nonce is invalid |
 | `DELEGATION_SIGNATURE_INVALID` | Delegation not signed by the claimed owner |
 | `DELEGATION_EXPIRED` | Delegation credential has expired |

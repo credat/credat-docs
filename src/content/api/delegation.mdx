@@ -16,7 +16,7 @@ function delegate(options: DelegateOptions): Promise<DelegationCredential>
 |---|---|---|---|---|
 | `agent` | `string` | Yes | --- | DID of the agent receiving the delegation |
 | `owner` | `string` | Yes | --- | DID of the owner granting it |
-| `ownerKeyPair` | `{ algorithm: string, publicKey: Uint8Array, privateKey: Uint8Array }` | Yes | --- | Owner's signing key pair |
+| `ownerKeyPair` | `KeyPair` | Yes | --- | Owner's signing key pair |
 | `scopes` | `string[]` | Yes | --- | Permissions to grant (min 1) |
 | `constraints` | `DelegationConstraints` | No | --- | Additional limits |
 | `validFrom` | `string` | No | --- | ISO 8601 start time |
@@ -78,7 +78,8 @@ const delegation = await delegate({
 
 | Code | When |
 |---|---|
-| `DELEGATION_SCOPE_INVALID` | Empty scopes array |
+| `DELEGATION_SCOPE_INVALID` | Empty scopes array, or scopes not a subset of parent delegation |
+| `DELEGATION_INVALID` | Parent delegation is invalid, or chain depth exceeds `maxChainDepth` |
 
 ---
 
@@ -115,7 +116,7 @@ function verifyDelegation(
 | Field | Type | Description |
 |---|---|---|
 | `valid` | `boolean` | Whether the delegation is valid |
-| `agent` | `string` | Agent DID (empty string if verification failed early) |
+| `agent` | `string \| undefined` | Agent DID (may be `undefined` if verification failed before parsing) |
 | `owner` | `string` | Owner DID |
 | `scopes` | `string[]` | Granted scopes |
 | `constraints` | `DelegationConstraints \| undefined` | Constraints |

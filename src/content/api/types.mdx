@@ -407,6 +407,7 @@ Request context passed to `validateConstraints` for checking delegation constrai
 interface ConstraintContext {
   transactionValue?: number;
   domain?: string;
+  rateLimit?: number;
   [key: string]: unknown;
 }
 ```
@@ -415,6 +416,7 @@ interface ConstraintContext {
 |---|---|---|
 | `transactionValue` | `number \| undefined` | Value to check against `maxTransactionValue` |
 | `domain` | `string \| undefined` | Domain to check against `allowedDomains` |
+| `rateLimit` | `number \| undefined` | Current rate to check against `rateLimit` constraint |
 | `[key: string]` | `unknown` | Custom context fields |
 
 ### `ConstraintViolation`
@@ -508,7 +510,7 @@ interface StatusListData {
 
 | Field | Type | Description |
 |---|---|---|
-| `bitstring` | `Uint8Array` | Compressed bitstring of revocation statuses |
+| `bitstring` | `Uint8Array` | Raw bitstring of revocation statuses (each bit: `0` = valid, `1` = revoked) |
 | `issuer` | `string` | DID of the status list issuer |
 | `id` | `string` | URL identifier of the status list |
 | `size` | `number` | Total number of entries |

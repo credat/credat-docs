@@ -36,8 +36,7 @@ const agent = await createAgent({
 |---|---|
 | `did` | The unique identifier, e.g. `did:web:acme.com` |
 | `didDocument` | Public key and metadata, hosted at `https://acme.com/.well-known/did.json` |
-| `keyPair` | The cryptographic key pair (public + private) |
-| `algorithm` | The signing algorithm: `ES256` or `EdDSA` |
+| `keyPair` | The cryptographic key pair (public + private), includes `keyPair.algorithm` |
 | `domain` | The domain this identity lives on |
 
 ## DID methods

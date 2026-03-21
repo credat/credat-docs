@@ -137,12 +137,11 @@ To support revoking delegations after they've been issued:
 ```typescript
 import { delegate, createStatusList, setRevocationStatus, isRevoked } from "@credat/sdk";
 
-// 1. Create a status list
+// 1. Create a status list (minimum size: 131072)
 const statusList = createStatusList({
   id: "status-list-1",
   issuer: ownerDid,
   url: "https://acme.com/.well-known/status-list.json",
-  size: 1000,
 });
 
 // 2. Issue with a status list entry
